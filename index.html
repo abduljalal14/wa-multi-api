@@ -226,7 +226,7 @@
       }
 
       .modal {
-        display: none;
+        display: none; /* Controlled by v-show */
         position: fixed;
         top: 0;
         left: 0;
@@ -234,6 +234,7 @@
         height: 100%;
         background: rgba(0, 0, 0, 0.5);
         z-index: 1000;
+        overflow-y: auto; /* Allow scrolling for tall modals */
       }
 
       .modal-content {
@@ -246,7 +247,7 @@
         border-radius: 15px;
         max-width: 500px;
         width: 90%;
-        max-height: 80vh;
+        max-height: 90vh; /* Adjusted max-height */
         overflow-y: auto;
       }
 
@@ -316,6 +317,7 @@
         border-radius: 10px;
         padding: 10px;
         background: white;
+        display: block; /* Ensure image behaves as block */
       }
 
       .loading {
@@ -381,7 +383,7 @@
         }
       }
     </style>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
   </head>
   <body>
     <div id="app" class="container">
@@ -512,7 +514,7 @@
         </div>
       </div>
 
-      <div id="createDeviceModal" class="modal" v-show="modals.createDevice">
+      <div id="createDeviceModal" class="modal" v-show="modals.createDevice" @click.self="closeModal('createDevice')">
         <div class="modal-content">
           <div class="modal-header">
             <h2 class="modal-title">Create New Device</h2>
@@ -559,7 +561,7 @@
         </div>
       </div>
 
-      <div id="qrModal" class="modal" v-show="modals.qr">
+      <div id="qrModal" class="modal" v-show="modals.qr" @click.self="closeModal('qr')">
         <div class="modal-content">
           <div class="modal-header">
             <h2 class="modal-title">QR Code Scanner</h2>
@@ -579,7 +581,7 @@
                 class="qr-code"
               />
               <p v-else-if="!loadingQr">
-                QR Code not available. Device might be already authenticated.
+                QR Code not available. Device might be already authenticated or an error occurred.
               </p>
             </div>
             <p>
@@ -589,7 +591,7 @@
         </div>
       </div>
 
-      <div id="sendMessageModal" class="modal" v-show="modals.sendMessage">
+      <div id="sendMessageModal" class="modal" v-show="modals.sendMessage" @click.self="closeModal('sendMessage')">
         <div class="modal-content">
           <div class="modal-header">
             <h2 class="modal-title">Send Message</h2>
@@ -627,7 +629,7 @@
         </div>
       </div>
 
-      <div id="bulkMessageModal" class="modal" v-show="modals.bulkMessage">
+      <div id="bulkMessageModal" class="modal" v-show="modals.bulkMessage" @click.self="closeModal('bulkMessage')">
         <div class="modal-content">
           <div class="modal-header">
             <h2 class="modal-title">Send Bulk Message</h2>
@@ -841,7 +843,7 @@
               const dataToSend = {
                 number: this.sendMessageForm.phoneNumber,
                 message: this.sendMessageForm.messageText,
-                device_id: this.currentDeviceId,
+                device_id: this.currentDeviceId, // Use currentDeviceId set when opening modal
                 apikey: this.API_KEY,
               };
               await this.apiCall(`/device/send-message`, {
@@ -884,16 +886,16 @@
             }
             this.qrInterval = setInterval(() => {
               this.loadQRCode(deviceId);
-            }, 30000);
+            }, 30000); // Refresh QR every 30 seconds
           },
 
           async loadQRCode(deviceId) {
             this.loadingQr = true;
-            this.qrCode = null;
+            this.qrCode = null; // Clear previous QR
             try {
               const dataToSend = { device_id: deviceId, apikey: this.API_KEY };
               const response = await this.apiCall(`/device/qr`, {
-                method: "POST", // Changed to POST as GET with body is unconventional
+                method: "POST", // Assumes your backend expects POST for QR retrieval
                 body: JSON.stringify(dataToSend),
               });
 
@@ -901,6 +903,7 @@
                 this.qrCode = response.qr_code;
               } else {
                 this.qrCode = null;
+                this.showAlert("QR Code not available. Device might be ready or an error occurred.", "info");
               }
             } catch (error) {
               this.qrCode = null;
@@ -913,34 +916,45 @@
           async sendBulkMessage() {
             const numbers = this.bulkMessageForm.bulkNumbers
               .split("\n")
-              .filter((n) => n.trim());
+              .filter((n) => n.trim()); // Filter out empty lines
             const message = this.bulkMessageForm.bulkMessage;
             const deviceId = this.bulkMessageForm.deviceId;
 
             if (!deviceId) {
-              this.showAlert("Please select a device", "error");
+              this.showAlert("Please select a device for bulk messaging.", "error");
+              return;
+            }
+            if (numbers.length === 0) {
+              this.showAlert("Please enter phone numbers for bulk messaging.", "error");
+              return;
+            }
+            if (!message) {
+              this.showAlert("Please enter a message for bulk messaging.", "error");
               return;
             }
 
-            this.showAlert(`Sending ${numbers.length} messages...`, "info");
+            this.showAlert(`Sending ${numbers.length} messages... Please wait.`, "info");
 
             let successful = 0;
             let failed = 0;
 
+            // Use a for...of loop for async operations in sequence
             for (const number of numbers) {
               try {
                 await this.sendMessageWithDelay(deviceId, number.trim(), message);
                 successful++;
               } catch (error) {
                 failed++;
+                console.error(`Failed to send message to ${number}:`, error);
               }
             }
 
             this.showAlert(
-              `Bulk message completed: ${successful} successful, ${failed} failed`,
-              successful > 0 ? "success" : "error"
+              `Bulk message completed: ${successful} successful, ${failed} failed.`,
+              successful > 0 ? "success" : (failed > 0 ? "error" : "info")
             );
             this.closeModal("bulkMessage");
+            // Reset form after sending
             this.bulkMessageForm = {
               bulkNumbers: "",
               bulkMessage: "",
@@ -949,6 +963,7 @@
           },
 
           async sendMessageWithDelay(deviceId, number, message) {
+            // Adds a small delay between each message in bulk send to avoid rate limits
             return new Promise(async (resolve, reject) => {
               try {
                 const dataToSend = {
@@ -961,7 +976,7 @@
                   method: "POST",
                   body: JSON.stringify(dataToSend),
                 });
-                setTimeout(resolve, 2000); // 2 second delay
+                setTimeout(resolve, 1000); // 1 second delay between messages
               } catch (error) {
                 reject(error);
               }
@@ -970,17 +985,21 @@
 
           async updateStats() {
             try {
-              const [statusResponse, healthResponse] = await Promise.all([
-                this.apiCall("/status"),
-                this.apiCall("/health"),
-              ]);
+              // Fetch device list first to update counts correctly if new devices added/removed
+              await this.refreshDevices();
 
-              this.totalDevices = statusResponse.total_devices;
-              this.readyDevices = statusResponse.ready_devices;
-              this.pendingDevices = statusResponse.pending_devices;
+              // Calculate counts from the devices array
+              this.totalDevices = this.devices.length;
+              this.readyDevices = this.devices.filter(d => d.is_ready).length;
+              this.pendingDevices = this.devices.filter(d => !d.is_ready && d.has_qr).length;
+
+
+              const healthResponse = await this.apiCall("/health");
               this.uptime = healthResponse.uptime;
             } catch (error) {
               console.error("Error updating stats:", error);
+              // Optionally show a general error if stats can't be fetched
+              // this.showAlert("Could not load dashboard stats.", "error");
             }
           },
 
@@ -989,7 +1008,7 @@
           },
 
           showSendMessageModal(deviceId) {
-            this.currentDeviceId = deviceId;
+            this.currentDeviceId = deviceId; // Set the device ID for the modal
             this.modals.sendMessage = true;
           },
 
@@ -1005,18 +1024,21 @@
             }
           },
 
-          showAlert(message, type = "info") {
+          showAlert(message, type = "info", duration = 5000) {
             const newAlert = { message, type };
             this.alerts.push(newAlert);
             setTimeout(() => {
               this.alerts = this.alerts.filter((alert) => alert !== newAlert);
-            }, 5000);
+            }, duration);
           },
         },
         mounted() {
+          // Initial data load when the Vue app is mounted
           this.refreshDevices();
-          this.updateStats();
-          setInterval(this.updateStats, 30000); // Update stats every 30 seconds
+          this.updateStats(); // This also calls refreshDevices internally now
+
+          // Set up intervals for periodic updates
+          setInterval(this.updateStats, 30000); // Update stats and device list every 30 seconds
         },
       });
     </script>
