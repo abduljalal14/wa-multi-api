@@ -642,9 +642,9 @@
         if (!confirm("Are you sure you want to delete this device?")) return;
 
         try {
-          // Add apikey and device_id to the body for DELETE /api/devices/:deviceId
+          // Add apikey and device_id to the body for DELETE /api/device
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          await apiCall(`/devices/${deviceId}`, {
+          await apiCall(`/device`, { // Corrected endpoint: removed /:deviceId from URL
             method: "DELETE",
             body: JSON.stringify(dataToSend),
           });
@@ -660,9 +660,9 @@
         if (!confirm("Are you sure you want to logout this device?")) return;
 
         try {
-          // Add apikey and device_id to the body for POST /api/devices/:deviceId/logout
+          // Add apikey and device_id to the body for POST /api/device/logout
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          await apiCall(`/devices/${deviceId}/logout`, {
+          await apiCall(`/device/logout`, { // Corrected endpoint: removed /:deviceId from URL
             method: "POST",
             body: JSON.stringify(dataToSend),
           });
@@ -676,9 +676,9 @@
 
       async function sendMessage(deviceId, number, message) {
         try {
-          // Add apikey and device_id to the body for POST /api/devices/:deviceId/send-message
+          // Add apikey and device_id to the body for POST /api/device/send-message
           const dataToSend = { number, message, device_id: deviceId, apikey: API_KEY };
-          const response = await apiCall(`/devices/${deviceId}/send-message`, {
+          const response = await apiCall(`/device/send-message`, { // Corrected endpoint: removed /:deviceId from URL
             method: "POST",
             body: JSON.stringify(dataToSend),
           });
@@ -692,9 +692,9 @@
 
       async function testWebhook(deviceId) {
         try {
-          // Add apikey and device_id to the body for POST /api/devices/:deviceId/test-webhook
+          // Add apikey and device_id to the body for POST /api/device/test-webhook
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          const response = await apiCall(`/devices/${deviceId}/test-webhook`, {
+          const response = await apiCall(`/device/test-webhook`, { // Corrected endpoint: removed /:deviceId from URL
             method: "POST",
             body: JSON.stringify(dataToSend),
           });
@@ -720,11 +720,11 @@
 
       async function loadQRCode(deviceId) {
         try {
-          // Backend expects body for GET /api/devices/:deviceId/qr, so include it.
+          // Backend expects body for GET /api/device/qr, so include it.
           // Note: Sending a body with GET requests is unconventional and might be stripped by some servers.
-          // If this causes issues, consider changing the backend /api/devices/:deviceId/qr to a POST endpoint.
+          // If this causes issues, consider changing the backend /api/device/qr to a POST endpoint.
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          const response = await apiCall(`/devices/${deviceId}/qr`, {
+          const response = await apiCall(`/device/qr`, { // Corrected endpoint: removed /:deviceId from URL
             method: "GET", // Keep as GET to match the backend's current route definition
             body: JSON.stringify(dataToSend),
           });
