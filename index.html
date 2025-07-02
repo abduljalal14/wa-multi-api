@@ -226,7 +226,7 @@
       }
 
       .modal {
-        display: none; /* Controlled by v-show */
+        display: none;
         position: fixed;
         top: 0;
         left: 0;
@@ -234,7 +234,6 @@
         height: 100%;
         background: rgba(0, 0, 0, 0.5);
         z-index: 1000;
-        overflow-y: auto; /* Allow scrolling for tall modals */
       }
 
       .modal-content {
@@ -247,7 +246,7 @@
         border-radius: 15px;
         max-width: 500px;
         width: 90%;
-        max-height: 90vh; /* Adjusted max-height */
+        max-height: 80vh;
         overflow-y: auto;
       }
 
@@ -317,7 +316,6 @@
         border-radius: 10px;
         padding: 10px;
         background: white;
-        display: block; /* Ensure image behaves as block */
       }
 
       .loading {
@@ -383,10 +381,9 @@
         }
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
   </head>
   <body>
-    <div id="app" class="container">
+    <div class="container">
       <div class="header">
         <h1>🤖 WhatsApp Bot Manager</h1>
         <p>Multi-Device WhatsApp Bot Control Panel</p>
@@ -394,653 +391,604 @@
 
       <div class="stats">
         <div class="stat-card">
-          <div class="stat-number">{{ totalDevices }}</div>
+          <div class="stat-number" id="totalDevices">0</div>
           <div class="stat-label">Total Devices</div>
         </div>
         <div class="stat-card">
-          <div class="stat-number">{{ readyDevices }}</div>
+          <div class="stat-number" id="readyDevices">0</div>
           <div class="stat-label">Ready Devices</div>
         </div>
         <div class="stat-card">
-          <div class="stat-number">{{ pendingDevices }}</div>
+          <div class="stat-number" id="pendingDevices">0</div>
           <div class="stat-label">Pending Devices</div>
         </div>
         <div class="stat-card">
-          <div class="stat-number">{{ formattedUptime }}</div>
+          <div class="stat-number" id="uptime">0s</div>
           <div class="stat-label">Uptime</div>
         </div>
       </div>
 
       <div class="main-content">
         <div class="controls">
-          <button class="btn btn-primary" @click="showCreateDeviceModal">
+          <button class="btn btn-primary" onclick="showCreateDeviceModal()">
             ➕ Add New Device
           </button>
-          <button class="btn btn-secondary" @click="refreshDevices">
+          <button class="btn btn-secondary" onclick="refreshDevices()">
             🔄 Refresh
           </button>
-          <button class="btn btn-info" @click="showBulkMessageModal">
+          <button class="btn btn-info" onclick="showBulkMessageModal()">
             📢 Bulk Message
           </button>
         </div>
 
-        <div id="alertContainer">
-          <div
-            v-for="(alert, index) in alerts"
-            :key="index"
-            :class="['alert', 'alert-' + alert.type]"
+        <div id="alertContainer"></div>
+
+        <div class="devices-grid" id="devicesGrid">
+          </div>
+      </div>
+    </div>
+
+    <div id="createDeviceModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Create New Device</h2>
+          <span class="close" onclick="closeModal('createDeviceModal')"
+            >&times;</span
           >
-            {{ alert.message }}
-          </div>
         </div>
-
-        <div class="devices-grid">
-          <div
-            class="device-card"
-            v-for="device in devices"
-            :key="device.device_id"
-          >
-            <div class="device-header">
-              <div class="device-name">{{ device.device_name }}</div>
-              <div
-                :class="[
-                  'status-badge',
-                  device.is_ready
-                    ? 'status-ready'
-                    : device.has_qr
-                    ? 'status-pending'
-                    : 'status-error',
-                ]"
-              >
-                {{
-                  device.is_ready ? "Ready" : device.has_qr ? "Pending" : "Error"
-                }}
-              </div>
-            </div>
-            <div class="device-info">
-              <div><strong>Device ID:</strong> {{ device.device_id }}</div>
-              <div>
-                <strong>Number:</strong> {{ device.number || "Not connected" }}
-              </div>
-              <div>
-                <strong>Battery:</strong>
-                {{ device.battery ? device.battery + "%" : "N/A" }}
-              </div>
-              <div>
-                <strong>Webhook:</strong>
-                {{ device.webhook_url ? "✅ Active" : "❌ Not set" }}
-              </div>
-              <div>
-                <strong>Auto Reply:</strong>
-                {{ device.config.auto_reply ? "✅ Enabled" : "❌ Disabled" }}
-              </div>
-            </div>
-            <div class="device-actions">
-              <button
-                v-if="!device.is_ready && device.has_qr"
-                class="btn btn-primary btn-sm"
-                @click="showQRCode(device.device_id)"
-              >
-                📱 Show QR
-              </button>
-              <button
-                v-if="device.is_ready"
-                class="btn btn-info btn-sm"
-                @click="showSendMessageModal(device.device_id)"
-              >
-                💬 Send Message
-              </button>
-              <button
-                v-if="device.webhook_url"
-                class="btn btn-secondary btn-sm"
-                @click="testWebhook(device.device_id)"
-              >
-                🔗 Test Webhook
-              </button>
-              <button
-                class="btn btn-secondary btn-sm"
-                @click="logoutDevice(device.device_id)"
-              >
-                🚪 Logout
-              </button>
-              <button
-                class="btn btn-danger btn-sm"
-                @click="deleteDevice(device.device_id)"
-              >
-                🗑️ Delete
-              </button>
-            </div>
+        <form id="createDeviceForm">
+          <div class="form-group">
+            <label class="form-label">Device Name</label>
+            <input
+              type="text"
+              class="form-input"
+              id="deviceName"
+              placeholder="Enter device name"
+              required
+            />
           </div>
-        </div>
+          <div class="form-group">
+            <label class="form-label">Webhook URL (Optional)</label>
+            <input
+              type="url"
+              class="form-input"
+              id="webhookUrl"
+              placeholder="https://your-webhook-url.com"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              <input type="checkbox" class="form-checkbox" id="autoReply" />
+              Enable Auto Reply
+            </label>
+          </div>
+          <div class="form-group">
+            <button type="submit" class="btn btn-primary">Create Device</button>
+          </div>
+        </form>
       </div>
+    </div>
 
-      <div id="createDeviceModal" class="modal" v-show="modals.createDevice" @click.self="closeModal('createDevice')">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2 class="modal-title">Create New Device</h2>
-            <span class="close" @click="closeModal('createDevice')"
-              >&times;</span
-            >
-          </div>
-          <form @submit.prevent="createDevice">
-            <div class="form-group">
-              <label class="form-label">Device Name</label>
-              <input
-                type="text"
-                class="form-input"
-                v-model="newDevice.deviceName"
-                placeholder="Enter device name"
-                required
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Webhook URL (Optional)</label>
-              <input
-                type="url"
-                class="form-input"
-                v-model="newDevice.webhookUrl"
-                placeholder="https://your-webhook-url.com"
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label">
-                <input
-                  type="checkbox"
-                  class="form-checkbox"
-                  v-model="newDevice.autoReply"
-                />
-                Enable Auto Reply
-              </label>
-            </div>
-            <div class="form-group">
-              <button type="submit" class="btn btn-primary">
-                Create Device
-              </button>
-            </div>
-          </form>
+    <div id="qrModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">QR Code Scanner</h2>
+          <span class="close" onclick="closeModal('qrModal')">&times;</span>
         </div>
-      </div>
-
-      <div id="qrModal" class="modal" v-show="modals.qr" @click.self="closeModal('qr')">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2 class="modal-title">QR Code Scanner</h2>
-            <span class="close" @click="closeModal('qr')">&times;</span>
+        <div class="qr-container">
+          <p>Scan this QR code with your WhatsApp:</p>
+          <div id="qrCodeContainer">
+            <div class="loading"></div>
+            Loading QR Code...
           </div>
-          <div class="qr-container">
-            <p>Scan this QR code with your WhatsApp:</p>
-            <div id="qrCodeContainer">
-              <div v-if="loadingQr" class="loading"></div>
-              <img
-                v-if="qrCode"
-                :src="
-                  'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' +
-                  encodeURIComponent(qrCode)
-                "
-                alt="QR Code"
-                class="qr-code"
-              />
-              <p v-else-if="!loadingQr">
-                QR Code not available. Device might be already authenticated or an error occurred.
-              </p>
-            </div>
-            <p>
-              <small>QR Code will refresh automatically every 30 seconds</small>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div id="sendMessageModal" class="modal" v-show="modals.sendMessage" @click.self="closeModal('sendMessage')">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2 class="modal-title">Send Message</h2>
-            <span class="close" @click="closeModal('sendMessage')"
-              >&times;</span
-            >
-          </div>
-          <form @submit.prevent="sendMessage">
-            <div class="form-group">
-              <label class="form-label">Phone Number</label>
-              <input
-                type="text"
-                class="form-input"
-                v-model="sendMessageForm.phoneNumber"
-                placeholder="6281234567890"
-                required
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Message</label>
-              <textarea
-                class="form-input"
-                v-model="sendMessageForm.messageText"
-                rows="4"
-                placeholder="Enter your message here..."
-                required
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <button type="submit" class="btn btn-primary">
-                Send Message
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div id="bulkMessageModal" class="modal" v-show="modals.bulkMessage" @click.self="closeModal('bulkMessage')">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2 class="modal-title">Send Bulk Message</h2>
-            <span class="close" @click="closeModal('bulkMessage')"
-              >&times;</span
-            >
-          </div>
-          <form @submit.prevent="sendBulkMessage">
-            <div class="form-group">
-              <label class="form-label">Phone Numbers (one per line)</label>
-              <textarea
-                class="form-input"
-                v-model="bulkMessageForm.bulkNumbers"
-                rows="6"
-                placeholder="6281234567890&#10;6281234567891&#10;6281234567892"
-                required
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Message</label>
-              <textarea
-                class="form-input"
-                v-model="bulkMessageForm.bulkMessage"
-                rows="4"
-                placeholder="Enter your message here..."
-                required
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Select Device</label>
-              <select class="form-input" v-model="bulkMessageForm.deviceId" required>
-                <option value="">Select a device...</option>
-                <option
-                  v-for="device in readyDevicesList"
-                  :key="device.device_id"
-                  :value="device.device_id"
-                >
-                  {{ device.device_name }} ({{ device.number }})
-                </option>
-              </select>
-            </div>
-            <div class="form-group">
-              <button type="submit" class="btn btn-primary">
-                Send Bulk Message
-              </button>
-            </div>
-          </form>
+          <p>
+            <small>QR Code will refresh automatically every 30 seconds</small>
+          </p>
         </div>
       </div>
     </div>
 
+    <div id="sendMessageModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Send Message</h2>
+          <span class="close" onclick="closeModal('sendMessageModal')"
+            >&times;</span
+          >
+        </div>
+        <form id="sendMessageForm">
+          <div class="form-group">
+            <label class="form-label">Phone Number</label>
+            <input
+              type="text"
+              class="form-input"
+              id="phoneNumber"
+              placeholder="6281234567890"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Message</label>
+            <textarea
+              class="form-input"
+              id="messageText"
+              rows="4"
+              placeholder="Enter your message here..."
+              required
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <button type="submit" class="btn btn-primary">Send Message</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="bulkMessageModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Send Bulk Message</h2>
+          <span class="close" onclick="closeModal('bulkMessageModal')"
+            >&times;</span
+          >
+        </div>
+        <form id="bulkMessageForm">
+          <div class="form-group">
+            <label class="form-label">Phone Numbers (one per line)</label>
+            <textarea
+              class="form-input"
+              id="bulkNumbers"
+              rows="6"
+              placeholder="6281234567890&#10;6281234567891&#10;6281234567892"
+              required
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Message</label>
+            <textarea
+              class="form-input"
+              id="bulkMessage"
+              rows="4"
+              placeholder="Enter your message here..."
+              required
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Select Device</label>
+            <select class="form-input" id="bulkDevice" required>
+              <option value="">Select a device...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <button type="submit" class="btn btn-primary">
+              Send Bulk Message
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script>
-      new Vue({
-        el: "#app",
-        data: {
-          API_BASE: "http://localhost:4001/api",
-          API_KEY: "YOUR_SUPER_SECRET_API_KEY", // Change this to your actual key!
-          devices: [],
-          totalDevices: 0,
-          readyDevices: 0,
-          pendingDevices: 0,
-          uptime: 0,
-          currentDeviceId: null,
-          qrCode: null,
-          loadingQr: false,
-          qrInterval: null,
-          alerts: [],
-          modals: {
-            createDevice: false,
-            qr: false,
-            sendMessage: false,
-            bulkMessage: false,
-          },
-          newDevice: {
-            deviceName: "",
-            webhookUrl: "",
-            autoReply: false,
-          },
-          sendMessageForm: {
-            phoneNumber: "",
-            messageText: "",
-          },
-          bulkMessageForm: {
-            bulkNumbers: "",
-            bulkMessage: "",
-            deviceId: "",
-          },
-        },
-        computed: {
-          formattedUptime() {
-            const seconds = this.uptime;
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
+      const API_BASE = "http://localhost:4001/api";
+      // Define your API Key here. IMPORTANT: This must match the GLOBAL_API_KEY in index.js
+      const API_KEY = "YOUR_SUPER_SECRET_API_KEY"; // Change this to your actual key!
+      let currentDeviceId = null;
+      let qrInterval = null;
 
-            if (hours > 0) {
-              return `${hours}h ${minutes}m`;
-            } else if (minutes > 0) {
-              return `${minutes}m ${secs}s`;
-            } else {
-              return `${secs}s`;
-            }
-          },
-          readyDevicesList() {
-            return this.devices.filter((d) => d.is_ready);
-          },
-        },
-        methods: {
-          async apiCall(endpoint, options = {}) {
-            try {
-              const headers = {
-                "Content-Type": "application/json",
-                ...options.headers,
-              };
-
-              const response = await fetch(`${this.API_BASE}${endpoint}`, {
-                headers: headers,
-                ...options,
-              });
-
-              if (!response.ok) {
-                const errorData = await response.json().catch(() => ({
-                  message: "Unknown error",
-                }));
-                throw new Error(
-                  `HTTP error! status: ${response.status}, message: ${
-                    errorData.message || response.statusText
-                  }`
-                );
-              }
-
-              return await response.json();
-            } catch (error) {
-              console.error("API Error:", error);
-              this.showAlert("Error: " + error.message, "error");
-              throw error;
-            }
-          },
-
-          async refreshDevices() {
-            try {
-              const response = await this.apiCall("/devices");
-              this.devices = response.devices;
-            } catch (error) {
-              console.error("Error refreshing devices:", error);
-            }
-          },
-
-          async createDevice() {
-            try {
-              const deviceData = {
-                device_name: this.newDevice.deviceName,
-                webhook_url: this.newDevice.webhookUrl || null,
-                auto_reply: this.newDevice.autoReply,
-                apikey: this.API_KEY,
-              };
-              await this.apiCall("/devices", {
-                method: "POST",
-                body: JSON.stringify(deviceData),
-              });
-
-              this.showAlert("Device created successfully!", "success");
-              this.closeModal("createDevice");
-              this.refreshDevices();
-              this.newDevice = {
-                deviceName: "",
-                webhookUrl: "",
-                autoReply: false,
-              };
-            } catch (error) {
-              console.error("Error creating device:", error);
-            }
-          },
-
-          async deleteDevice(deviceId) {
-            if (!confirm("Are you sure you want to delete this device?")) return;
-
-            try {
-              const dataToSend = { device_id: deviceId, apikey: this.API_KEY };
-              await this.apiCall(`/device`, {
-                method: "DELETE",
-                body: JSON.stringify(dataToSend),
-              });
-
-              this.showAlert("Device deleted successfully!", "success");
-              this.refreshDevices();
-            } catch (error) {
-              console.error("Error deleting device:", error);
-            }
-          },
-
-          async logoutDevice(deviceId) {
-            if (!confirm("Are you sure you want to logout this device?")) return;
-
-            try {
-              const dataToSend = { device_id: deviceId, apikey: this.API_KEY };
-              await this.apiCall(`/device/logout`, {
-                method: "POST",
-                body: JSON.stringify(dataToSend),
-              });
-
-              this.showAlert("Device logged out successfully!", "success");
-              this.refreshDevices();
-            } catch (error) {
-              console.error("Error logging out device:", error);
-            }
-          },
-
-          async sendMessage() {
-            try {
-              const dataToSend = {
-                number: this.sendMessageForm.phoneNumber,
-                message: this.sendMessageForm.messageText,
-                device_id: this.currentDeviceId, // Use currentDeviceId set when opening modal
-                apikey: this.API_KEY,
-              };
-              await this.apiCall(`/device/send-message`, {
-                method: "POST",
-                body: JSON.stringify(dataToSend),
-              });
-
-              this.showAlert("Message sent successfully!", "success");
-              this.closeModal("sendMessage");
-              this.sendMessageForm = {
-                phoneNumber: "",
-                messageText: "",
-              };
-            } catch (error) {
-              console.error("Error sending message:", error);
-            }
-          },
-
-          async testWebhook(deviceId) {
-            try {
-              const dataToSend = { device_id: deviceId, apikey: this.API_KEY };
-              await this.apiCall(`/device/test-webhook`, {
-                method: "POST",
-                body: JSON.stringify(dataToSend),
-              });
-
-              this.showAlert("Webhook test sent successfully!", "success");
-            } catch (error) {
-              console.error("Error testing webhook:", error);
-            }
-          },
-
-          async showQRCode(deviceId) {
-            this.currentDeviceId = deviceId;
-            this.modals.qr = true;
-            await this.loadQRCode(deviceId);
-
-            if (this.qrInterval) {
-              clearInterval(this.qrInterval);
-            }
-            this.qrInterval = setInterval(() => {
-              this.loadQRCode(deviceId);
-            }, 30000); // Refresh QR every 30 seconds
-          },
-
-          async loadQRCode(deviceId) {
-            this.loadingQr = true;
-            this.qrCode = null; // Clear previous QR
-            try {
-              const dataToSend = { device_id: deviceId, apikey: this.API_KEY };
-              const response = await this.apiCall(`/device/qr`, {
-                method: "POST", // Assumes your backend expects POST for QR retrieval
-                body: JSON.stringify(dataToSend),
-              });
-
-              if (response.qr_code) {
-                this.qrCode = response.qr_code;
-              } else {
-                this.qrCode = null;
-                this.showAlert("QR Code not available. Device might be ready or an error occurred.", "info");
-              }
-            } catch (error) {
-              this.qrCode = null;
-              console.error("Error loading QR Code:", error);
-            } finally {
-              this.loadingQr = false;
-            }
-          },
-
-          async sendBulkMessage() {
-            const numbers = this.bulkMessageForm.bulkNumbers
-              .split("\n")
-              .filter((n) => n.trim()); // Filter out empty lines
-            const message = this.bulkMessageForm.bulkMessage;
-            const deviceId = this.bulkMessageForm.deviceId;
-
-            if (!deviceId) {
-              this.showAlert("Please select a device for bulk messaging.", "error");
-              return;
-            }
-            if (numbers.length === 0) {
-              this.showAlert("Please enter phone numbers for bulk messaging.", "error");
-              return;
-            }
-            if (!message) {
-              this.showAlert("Please enter a message for bulk messaging.", "error");
-              return;
-            }
-
-            this.showAlert(`Sending ${numbers.length} messages... Please wait.`, "info");
-
-            let successful = 0;
-            let failed = 0;
-
-            // Use a for...of loop for async operations in sequence
-            for (const number of numbers) {
-              try {
-                await this.sendMessageWithDelay(deviceId, number.trim(), message);
-                successful++;
-              } catch (error) {
-                failed++;
-                console.error(`Failed to send message to ${number}:`, error);
-              }
-            }
-
-            this.showAlert(
-              `Bulk message completed: ${successful} successful, ${failed} failed.`,
-              successful > 0 ? "success" : (failed > 0 ? "error" : "info")
-            );
-            this.closeModal("bulkMessage");
-            // Reset form after sending
-            this.bulkMessageForm = {
-              bulkNumbers: "",
-              bulkMessage: "",
-              deviceId: "",
-            };
-          },
-
-          async sendMessageWithDelay(deviceId, number, message) {
-            // Adds a small delay between each message in bulk send to avoid rate limits
-            return new Promise(async (resolve, reject) => {
-              try {
-                const dataToSend = {
-                  number,
-                  message,
-                  device_id: deviceId,
-                  apikey: this.API_KEY,
-                };
-                await this.apiCall(`/device/send-message`, {
-                  method: "POST",
-                  body: JSON.stringify(dataToSend),
-                });
-                setTimeout(resolve, 1000); // 1 second delay between messages
-              } catch (error) {
-                reject(error);
-              }
-            });
-          },
-
-          async updateStats() {
-            try {
-              // Fetch device list first to update counts correctly if new devices added/removed
-              await this.refreshDevices();
-
-              // Calculate counts from the devices array
-              this.totalDevices = this.devices.length;
-              this.readyDevices = this.devices.filter(d => d.is_ready).length;
-              this.pendingDevices = this.devices.filter(d => !d.is_ready && d.has_qr).length;
-
-
-              const healthResponse = await this.apiCall("/health");
-              this.uptime = healthResponse.uptime;
-            } catch (error) {
-              console.error("Error updating stats:", error);
-              // Optionally show a general error if stats can't be fetched
-              // this.showAlert("Could not load dashboard stats.", "error");
-            }
-          },
-
-          showCreateDeviceModal() {
-            this.modals.createDevice = true;
-          },
-
-          showSendMessageModal(deviceId) {
-            this.currentDeviceId = deviceId; // Set the device ID for the modal
-            this.modals.sendMessage = true;
-          },
-
-          showBulkMessageModal() {
-            this.modals.bulkMessage = true;
-          },
-
-          closeModal(modalName) {
-            this.modals[modalName] = false;
-            if (modalName === "qr" && this.qrInterval) {
-              clearInterval(this.qrInterval);
-              this.qrInterval = null;
-            }
-          },
-
-          showAlert(message, type = "info", duration = 5000) {
-            const newAlert = { message, type };
-            this.alerts.push(newAlert);
-            setTimeout(() => {
-              this.alerts = this.alerts.filter((alert) => alert !== newAlert);
-            }, duration);
-          },
-        },
-        mounted() {
-          // Initial data load when the Vue app is mounted
-          this.refreshDevices();
-          this.updateStats(); // This also calls refreshDevices internally now
-
-          // Set up intervals for periodic updates
-          setInterval(this.updateStats, 30000); // Update stats and device list every 30 seconds
-        },
+      // Initialize the app
+      document.addEventListener("DOMContentLoaded", function () {
+        refreshDevices();
+        updateStats();
+        setInterval(updateStats, 30000); // Update stats every 30 seconds
       });
+
+      // API Functions
+      async function apiCall(endpoint, options = {}) {
+        try {
+          const headers = {
+            "Content-Type": "application/json",
+            // The x-api-key header is removed as the backend expects apikey in the request body
+            ...options.headers,
+          };
+
+          const response = await fetch(`${API_BASE}${endpoint}`, {
+            headers: headers,
+            ...options,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.message || response.statusText}`);
+          }
+
+          return await response.json();
+        } catch (error) {
+          console.error("API Error:", error);
+          showAlert("Error: " + error.message, "error");
+          throw error;
+        }
+      }
+
+      // Device Management
+      async function refreshDevices() {
+        try {
+          const response = await apiCall("/devices"); // No apikey needed for GET /api/devices
+          displayDevices(response.devices);
+          updateBulkDeviceSelect(response.devices);
+        } catch (error) {
+          console.error("Error refreshing devices:", error);
+        }
+      }
+
+      async function createDevice(deviceData) {
+        try {
+          // Add apikey to the body for POST /api/devices
+          const dataToSend = { ...deviceData, apikey: API_KEY };
+          const response = await apiCall("/devices", {
+            method: "POST",
+            body: JSON.stringify(dataToSend),
+          });
+
+          showAlert("Device created successfully!", "success");
+          closeModal("createDeviceModal");
+          refreshDevices();
+          return response.device;
+        } catch (error) {
+          console.error("Error creating device:", error);
+        }
+      }
+
+      async function deleteDevice(deviceId) {
+        if (!confirm("Are you sure you want to delete this device?")) return;
+
+        try {
+          // Add apikey and device_id to the body for DELETE /api/device
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
+          await apiCall(`/device`, { // Corrected endpoint: removed /:deviceId from URL
+            method: "DELETE",
+            body: JSON.stringify(dataToSend),
+          });
+
+          showAlert("Device deleted successfully!", "success");
+          refreshDevices();
+        } catch (error) {
+          console.error("Error deleting device:", error);
+        }
+      }
+
+      async function logoutDevice(deviceId) {
+        if (!confirm("Are you sure you want to logout this device?")) return;
+
+        try {
+          // Add apikey and device_id to the body for POST /api/device/logout
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
+          await apiCall(`/device/logout`, { // Corrected endpoint: removed /:deviceId from URL
+            method: "POST",
+            body: JSON.stringify(dataToSend),
+          });
+
+          showAlert("Device logged out successfully!", "success");
+          refreshDevices();
+        } catch (error) {
+          console.error("Error logging out device:", error);
+        }
+      }
+
+      async function sendMessage(deviceId, number, message) {
+        try {
+          // Add apikey and device_id to the body for POST /api/device/send-message
+          const dataToSend = { number, message, device_id: deviceId, apikey: API_KEY };
+          const response = await apiCall(`/device/send-message`, { // Corrected endpoint: removed /:deviceId from URL
+            method: "POST",
+            body: JSON.stringify(dataToSend),
+          });
+
+          showAlert("Message sent successfully!", "success");
+          return response;
+        } catch (error) {
+          console.error("Error sending message:", error);
+        }
+      }
+
+      async function testWebhook(deviceId) {
+        try {
+          // Add apikey and device_id to the body for POST /api/device/test-webhook
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
+          const response = await apiCall(`/device/test-webhook`, { // Corrected endpoint: removed /:deviceId from URL
+            method: "POST",
+            body: JSON.stringify(dataToSend),
+          });
+
+          showAlert("Webhook test sent successfully!", "success");
+          return response;
+        } catch (error) {
+          console.error("Error testing webhook:", error);
+        }
+      }
+
+      // QR Code Management
+      async function showQRCode(deviceId) {
+        currentDeviceId = deviceId;
+        document.getElementById("qrModal").style.display = "block";
+        await loadQRCode(deviceId);
+
+        // Auto refresh QR code every 30 seconds
+        qrInterval = setInterval(() => {
+          loadQRCode(deviceId);
+        }, 30000);
+      }
+
+      async function loadQRCode(deviceId) {
+        try {
+          // Backend expects body for GET /api/device/qr, so include it.
+          // Note: Sending a body with GET requests is unconventional and might be stripped by some servers.
+          // If this causes issues, consider changing the backend /api/device/qr to a POST endpoint.
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
+          const response = await apiCall(`/device/qr`, { // Corrected endpoint: removed /:deviceId from URL
+            method: "GET", // Keep as GET to match the backend's current route definition
+            body: JSON.stringify(dataToSend),
+          });
+
+          if (response.qr_code) {
+            const qrContainer = document.getElementById("qrCodeContainer");
+            qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+              response.qr_code
+            )}" alt="QR Code" class="qr-code">`;
+          } else {
+            document.getElementById("qrCodeContainer").innerHTML =
+              "<p>QR Code not available. Device might be already authenticated.</p>";
+          }
+        } catch (error) {
+          document.getElementById("qrCodeContainer").innerHTML =
+            "<p>Error loading QR Code. Device might be ready or there was an error.</p>";
+        }
+      }
+
+      // UI Functions
+      function displayDevices(devices) {
+        const grid = document.getElementById("devicesGrid");
+
+        if (devices.length === 0) {
+          grid.innerHTML =
+            '<div style="text-align: center; padding: 40px; color: #666;"><h3>No devices found</h3><p>Create your first device to get started!</p></div>';
+          return;
+        }
+
+        grid.innerHTML = devices
+          .map(
+            (device) => `
+                <div class="device-card">
+                    <div class="device-header">
+                        <div class="device-name">${device.device_name}</div>
+                        <div class="status-badge ${
+                          device.is_ready
+                            ? "status-ready"
+                            : device.has_qr
+                            ? "status-pending"
+                            : "status-error"
+                        }">
+                            ${
+                              device.is_ready
+                                ? "Ready"
+                                : device.has_qr
+                                ? "Pending"
+                                : "Error"
+                            }
+                        </div>
+                    </div>
+                    <div class="device-info">
+                        <div><strong>Device ID:</strong> ${
+                          device.device_id
+                        }</div>
+                        <div><strong>Number:</strong> ${
+                          device.number || "Not connected"
+                        }</div>
+                        <div><strong>Battery:</strong> ${
+                          device.battery ? device.battery + "%" : "N/A"
+                        }</div>
+                        <div><strong>Webhook:</strong> ${
+                          device.webhook_url ? "✅ Active" : "❌ Not set"
+                        }</div>
+                        <div><strong>Auto Reply:</strong> ${
+                          device.config.auto_reply
+                            ? "✅ Enabled"
+                            : "❌ Disabled"
+                        }</div>
+                    </div>
+                    <div class="device-actions">
+                        ${
+                          !device.is_ready && device.has_qr
+                            ? `<button class="btn btn-primary btn-sm" onclick="showQRCode('${device.device_id}')">📱 Show QR</button>`
+                            : ""
+                        }
+                        ${
+                          device.is_ready
+                            ? `<button class="btn btn-info btn-sm" onclick="showSendMessageModal('${device.device_id}')">💬 Send Message</button>`
+                            : ""
+                        }
+                        ${
+                          device.webhook_url
+                            ? `<button class="btn btn-secondary btn-sm" onclick="testWebhook('${device.device_id}')">🔗 Test Webhook</button>`
+                            : ""
+                        }
+                        <button class="btn btn-secondary btn-sm" onclick="logoutDevice('${
+                          device.device_id
+                        }')">🚪 Logout</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteDevice('${
+                          device.device_id
+                        }')">🗑️ Delete</button>
+                    </div>
+                </div>
+            `
+          )
+          .join("");
+      }
+
+      function updateBulkDeviceSelect(devices) {
+        const select = document.getElementById("bulkDevice");
+        const readyDevices = devices.filter((d) => d.is_ready);
+
+        select.innerHTML =
+          '<option value="">Select a device...</option>' +
+          readyDevices
+            .map(
+              (device) =>
+                `<option value="${device.device_id}">${device.device_name} (${device.number})</option>`
+            )
+            .join("");
+      }
+
+      async function updateStats() {
+        try {
+          const [statusResponse, healthResponse] = await Promise.all([
+            apiCall("/status"),
+            apiCall("/health"),
+          ]);
+
+          document.getElementById("totalDevices").textContent =
+            statusResponse.total_devices;
+          document.getElementById("readyDevices").textContent =
+            statusResponse.ready_devices;
+          document.getElementById("pendingDevices").textContent =
+            statusResponse.pending_devices;
+          document.getElementById("uptime").textContent = formatUptime(
+            healthResponse.uptime
+          );
+        } catch (error) {
+          console.error("Error updating stats:", error);
+        }
+      }
+
+      function formatUptime(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        if (hours > 0) {
+          return `${hours}h ${minutes}m`;
+        } else if (minutes > 0) {
+          return `${minutes}m ${secs}s`;
+        } else {
+          return `${secs}s`;
+        }
+      }
+
+      // Modal Functions
+      function showCreateDeviceModal() {
+        document.getElementById("createDeviceModal").style.display = "block";
+      }
+
+      function showSendMessageModal(deviceId) {
+        currentDeviceId = deviceId;
+        document.getElementById("sendMessageModal").style.display = "block";
+      }
+
+      function showBulkMessageModal() {
+        document.getElementById("bulkMessageModal").style.display = "block";
+      }
+
+      function closeModal(modalId) {
+        document.getElementById(modalId).style.display = "none";
+
+        if (modalId === "qrModal" && qrInterval) {
+          clearInterval(qrInterval);
+          qrInterval = null;
+        }
+      }
+
+      // Event Listeners
+      document
+        .getElementById("createDeviceForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const deviceData = {
+            device_name: document.getElementById("deviceName").value,
+            webhook_url: document.getElementById("webhookUrl").value || null,
+            auto_reply: document.getElementById("autoReply").checked,
+          };
+
+          await createDevice(deviceData);
+          e.target.reset();
+        });
+
+      document
+        .getElementById("sendMessageForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const number = document.getElementById("phoneNumber").value;
+          const message = document.getElementById("messageText").value;
+
+          await sendMessage(currentDeviceId, number, message);
+          closeModal("sendMessageModal");
+          e.target.reset();
+        });
+
+      document
+        .getElementById("bulkMessageForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const numbers = document
+            .getElementById("bulkNumbers")
+            .value.split("\n")
+            .filter((n) => n.trim());
+          const message = document.getElementById("bulkMessage").value;
+          const deviceId = document.getElementById("bulkDevice").value;
+
+          if (!deviceId) {
+            showAlert("Please select a device", "error");
+            return;
+          }
+
+          showAlert(`Sending ${numbers.length} messages...`, "info");
+
+          let successful = 0;
+          let failed = 0;
+
+          for (const number of numbers) {
+            try {
+              await sendMessage(deviceId, number.trim(), message);
+              successful++;
+              await new Promise((resolve) => setTimeout(resolve, 2000)); // 2 second delay between messages
+            } catch (error) {
+              failed++;
+            }
+          }
+
+          showAlert(
+            `Bulk message completed: ${successful} successful, ${failed} failed`,
+            successful > 0 ? "success" : "error"
+          );
+          closeModal("bulkMessageModal");
+          e.target.reset();
+        });
+
+      // Close modals when clicking outside
+      window.addEventListener("click", (e) => {
+        if (e.target.classList.contains("modal")) {
+          e.target.style.display = "none";
+          if (qrInterval) {
+            clearInterval(qrInterval);
+            qrInterval = null;
+          }
+        }
+      });
+
+      // Alert Function
+      function showAlert(message, type = "info") {
+        const alertContainer = document.getElementById("alertContainer");
+        const alertDiv = document.createElement("div");
+        alertDiv.className = `alert alert-${type}`;
+        alertDiv.textContent = message;
+
+        alertContainer.appendChild(alertDiv);
+
+        setTimeout(() => {
+          alertDiv.remove();
+        }, 5000);
+      }
     </script>
   </body>
 </html>
