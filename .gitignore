@@ -1,0 +1,5 @@
+/.wwebjs_cache
+/configs
+/node_modules
+/package-lock.json
+/sessions
