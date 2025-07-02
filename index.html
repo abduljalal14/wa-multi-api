@@ -725,6 +725,8 @@
                 device_id: deviceId,
                 apikey: API_KEY
             }).toString();
+
+            const dataToSend = { device_id: deviceId, apikey: API_KEY };
             
             const response = await apiCall(`/device/qr?${params}`, {
                 method: "GET",
