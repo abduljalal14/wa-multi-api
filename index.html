@@ -720,29 +720,33 @@
 
       async function loadQRCode(deviceId) {
         try {
-          // Backend expects body for GET /api/device/qr, so include it.
-          // Note: Sending a body with GET requests is unconventional and might be stripped by some servers.
-          // If this causes issues, consider changing the backend /api/device/qr to a POST endpoint.
-          const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          const response = await apiCall(`/device/qr`, { // Corrected endpoint: removed /:deviceId from URL
-            method: "GET", // Keep as GET to match the backend's current route definition
-            body: JSON.stringify(dataToSend),
-          });
+            // Send device_id and apikey as URL query parameters for GET request
+            const params = new URLSearchParams({
+                device_id: deviceId,
+                apikey: API_KEY
+            }).toString();
+            
+            const response = await apiCall(`/device/qr?${params}`, {
+                method: "GET",
+                // Remove the body for GET requests
+                // body: JSON.stringify(dataToSend), 
+            });
 
-          if (response.qr_code) {
-            const qrContainer = document.getElementById("qrCodeContainer");
-            qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-              response.qr_code
-            )}" alt="QR Code" class="qr-code">`;
-          } else {
-            document.getElementById("qrCodeContainer").innerHTML =
-              "<p>QR Code not available. Device might be already authenticated.</p>";
-          }
+            if (response.qr_code) {
+                const qrContainer = document.getElementById("qrCodeContainer");
+                qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                    response.qr_code
+                )}" alt="QR Code" class="qr-code">`;
+            } else {
+                document.getElementById("qrCodeContainer").innerHTML =
+                    "<p>QR Code not available. Device might be already authenticated.</p>";
+            }
         } catch (error) {
-          document.getElementById("qrCodeContainer").innerHTML =
-            "<p>Error loading QR Code. Device might be ready or there was an error.</p>";
+            document.getElementById("qrCodeContainer").innerHTML =
+                "<p>Error loading QR Code. Device might be ready or there was an error.</p>";
         }
-      }
+    }
+
 
       // UI Functions
       function displayDevices(devices) {
