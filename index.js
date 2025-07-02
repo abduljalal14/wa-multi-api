@@ -451,27 +451,14 @@ const validateRequest = (req, res, next) => {
     });
   }
 
-  // Jika device_id ada di params dan body, pastikan konsisten
-  if (req.params.deviceId && req.params.deviceId !== device_id) {
-    return res.status(400).json({
-      status: "error",
-      message: "Device ID dalam URL tidak cocok dengan Device ID dalam body."
-    });
-  }
-
-  // Set deviceId dari body ke params jika belum ada (untuk konsistensi)
-  if (!req.params.deviceId) {
-    req.params.deviceId = device_id;
-  }
+  // Set deviceId dari body ke params untuk konsistensi di handler route
+  // Ini penting karena handler route masih mungkin mengakses req.params.deviceId
+  req.params.deviceId = device_id;
 
   next(); // Lanjutkan ke handler route
 };
 
 // API Routes
-
-// Apply validateRequest middleware to specific routes
-// For routes that take deviceId from URL params, device_id in body should match or be omitted.
-// For routes like /api/devices (POST), device_id will be generated, so validate only apikey.
 
 // Create new device (no device_id in body required, it's generated) - ONLY check apikey
 app.post("/api/devices", (req, res) => {
@@ -522,9 +509,9 @@ app.get("/api/devices", (req, res) => {
   });
 });
 
-// Routes requiring device_id and apikey in the body
-app.get("/api/devices/:deviceId", validateRequest, (req, res) => {
-  const { deviceId } = req.params;
+// Routes now solely rely on device_id from body
+app.get("/api/device", validateRequest, (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -540,8 +527,8 @@ app.get("/api/devices/:deviceId", validateRequest, (req, res) => {
   });
 });
 
-app.put("/api/devices/:deviceId", validateRequest, (req, res) => {
-  const { deviceId } = req.params;
+app.put("/api/device", validateRequest, (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -574,8 +561,8 @@ app.put("/api/devices/:deviceId", validateRequest, (req, res) => {
   }
 });
 
-app.delete("/api/devices/:deviceId", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+app.delete("/api/device", validateRequest, async (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -607,8 +594,8 @@ app.delete("/api/devices/:deviceId", validateRequest, async (req, res) => {
   }
 });
 
-app.get("/api/devices/:deviceId/qr", validateRequest, (req, res) => {
-  const { deviceId } = req.params;
+app.get("/api/device/qr", validateRequest, (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -632,9 +619,9 @@ app.get("/api/devices/:deviceId/qr", validateRequest, (req, res) => {
   });
 });
 
-app.post("/api/devices/:deviceId/send-message", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
-  const { number, message } = req.body; // device_id and apikey are handled by middleware
+app.post("/api/device/send-message", validateRequest, async (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { number, message } = req.body;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -675,8 +662,8 @@ app.post("/api/devices/:deviceId/send-message", validateRequest, async (req, res
   }
 });
 
-app.post("/api/devices/:deviceId/logout", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+app.post("/api/device/logout", validateRequest, async (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -701,8 +688,8 @@ app.post("/api/devices/:deviceId/logout", validateRequest, async (req, res) => {
   }
 });
 
-app.post("/api/devices/:deviceId/test-webhook", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+app.post("/api/device/test-webhook", validateRequest, async (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -783,8 +770,8 @@ app.get("/api/health", (req, res) => {
 // Backward compatibility endpoints (untuk compatibility dengan kode lama)
 // These will also now require device_id and apikey in the body for consistency.
 app.get("/get_qr", validateRequest, (req, res) => {
-  const { device_id } = req.body;
-  const manager = getClient(device_id);
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const manager = getClient(deviceId);
 
   if (!manager) {
     return res.status(404).json({
@@ -808,8 +795,8 @@ app.get("/get_qr", validateRequest, (req, res) => {
 });
 
 app.post("/send-message", validateRequest, async (req, res) => {
-  const { number, message, device_id } = req.body;
-  const manager = getClient(device_id);
+  const { number, message, deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const manager = getClient(deviceId);
 
   if (!manager) {
     return res.status(404).json({
@@ -857,15 +844,17 @@ app.use((req, res) => {
     available_endpoints: [
       "GET /api/devices - List all devices",
       "POST /api/devices - Create new device",
-      "GET /api/devices/:id - Get device info",
-      "PUT /api/devices/:id - Update device config",
-      "DELETE /api/devices/:id - Delete device",
-      "GET /api/devices/:id/qr - Get QR code",
-      "POST /api/devices/:id/send-message - Send message",
-      "POST /api/devices/:id/logout - Logout device",
-      "POST /api/devices/:id/test-webhook - Test webhook",
+      "GET /api/device - Get device info (using device_id in body)",
+      "PUT /api/device - Update device config (using device_id in body)",
+      "DELETE /api/device - Delete device (using device_id in body)",
+      "GET /api/device/qr - Get QR code (using device_id in body)",
+      "POST /api/device/send-message - Send message (using device_id in body)",
+      "POST /api/device/logout - Logout device (using device_id in body)",
+      "POST /api/device/test-webhook - Test webhook (using device_id in body)",
       "GET /api/status - Global status",
-      "GET /api/health - Health check"
+      "GET /api/health - Health check",
+      "GET /get_qr - Backward compatibility for QR (using device_id in body)",
+      "POST /send-message - Backward compatibility for send message (using device_id in body)"
     ]
   });
 });
@@ -897,13 +886,13 @@ app.listen(PORT, () => {
   console.log("📋 New API Endpoints:");
   console.log("  GET  /api/devices           - List all devices");
   console.log("  POST /api/devices           - Create new device");
-  console.log("  GET  /api/devices/:id       - Get device info");
-  console.log("  PUT  /api/devices/:id       - Update device config");
-  console.log("  DELETE /api/devices/:id     - Delete device");
-  console.log("  GET  /api/devices/:id/qr    - Get QR code");
-  console.log("  POST /api/devices/:id/send-message - Send message");
-  console.log("  POST /api/devices/:id/logout - Logout device");
-  console.log("  POST /api/devices/:id/test-webhook - Test webhook");
+  console.log("  GET  /api/device            - Get device info (requires device_id in body)");
+  console.log("  PUT  /api/device            - Update device config (requires device_id in body)");
+  console.log("  DELETE /api/device          - Delete device (requires device_id in body)");
+  console.log("  GET  /api/device/qr         - Get QR code (requires device_id in body)");
+  console.log("  POST /api/device/send-message - Send message (requires device_id in body)");
+  console.log("  POST /api/device/logout     - Logout device (requires device_id in body)");
+  console.log("  POST /api/device/test-webhook - Test webhook (requires device_id in body)");
   console.log("  GET  /api/status            - Global status");
   console.log("  GET  /api/health            - Health check");
   console.log("📁 Config directory: " + path.resolve(CONFIG_DIR));

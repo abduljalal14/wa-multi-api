@@ -570,8 +570,8 @@
 
     <script>
       const API_BASE = "http://localhost:4001/api";
-      // Define your API Key here
-      const API_KEY = "YOUR_SUPER_SECRET_API_KEY"; //
+      // Define your API Key here. IMPORTANT: This must match the GLOBAL_API_KEY in index.js
+      const API_KEY = "YOUR_SUPER_SECRET_API_KEY"; // Change this to your actual key!
       let currentDeviceId = null;
       let qrInterval = null;
 
@@ -585,19 +585,20 @@
       // API Functions
       async function apiCall(endpoint, options = {}) {
         try {
-          const headers = { //
-            "Content-Type": "application/json", //
-            "x-api-key": API_KEY, // Add the API key header
-            ...options.headers, //
-          }; //
+          const headers = {
+            "Content-Type": "application/json",
+            // The x-api-key header is removed as the backend expects apikey in the request body
+            ...options.headers,
+          };
 
           const response = await fetch(`${API_BASE}${endpoint}`, {
-            headers: headers, // Use the combined headers
+            headers: headers,
             ...options,
           });
 
           if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.message || response.statusText}`);
           }
 
           return await response.json();
@@ -611,7 +612,7 @@
       // Device Management
       async function refreshDevices() {
         try {
-          const response = await apiCall("/devices");
+          const response = await apiCall("/devices"); // No apikey needed for GET /api/devices
           displayDevices(response.devices);
           updateBulkDeviceSelect(response.devices);
         } catch (error) {
@@ -621,9 +622,11 @@
 
       async function createDevice(deviceData) {
         try {
+          // Add apikey to the body for POST /api/devices
+          const dataToSend = { ...deviceData, apikey: API_KEY };
           const response = await apiCall("/devices", {
             method: "POST",
-            body: JSON.stringify(deviceData),
+            body: JSON.stringify(dataToSend),
           });
 
           showAlert("Device created successfully!", "success");
@@ -639,8 +642,11 @@
         if (!confirm("Are you sure you want to delete this device?")) return;
 
         try {
+          // Add apikey and device_id to the body for DELETE /api/devices/:deviceId
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
           await apiCall(`/devices/${deviceId}`, {
             method: "DELETE",
+            body: JSON.stringify(dataToSend),
           });
 
           showAlert("Device deleted successfully!", "success");
@@ -654,8 +660,11 @@
         if (!confirm("Are you sure you want to logout this device?")) return;
 
         try {
+          // Add apikey and device_id to the body for POST /api/devices/:deviceId/logout
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
           await apiCall(`/devices/${deviceId}/logout`, {
             method: "POST",
+            body: JSON.stringify(dataToSend),
           });
 
           showAlert("Device logged out successfully!", "success");
@@ -667,9 +676,11 @@
 
       async function sendMessage(deviceId, number, message) {
         try {
+          // Add apikey and device_id to the body for POST /api/devices/:deviceId/send-message
+          const dataToSend = { number, message, device_id: deviceId, apikey: API_KEY };
           const response = await apiCall(`/devices/${deviceId}/send-message`, {
             method: "POST",
-            body: JSON.stringify({ number, message }),
+            body: JSON.stringify(dataToSend),
           });
 
           showAlert("Message sent successfully!", "success");
@@ -681,8 +692,11 @@
 
       async function testWebhook(deviceId) {
         try {
+          // Add apikey and device_id to the body for POST /api/devices/:deviceId/test-webhook
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
           const response = await apiCall(`/devices/${deviceId}/test-webhook`, {
             method: "POST",
+            body: JSON.stringify(dataToSend),
           });
 
           showAlert("Webhook test sent successfully!", "success");
@@ -706,7 +720,14 @@
 
       async function loadQRCode(deviceId) {
         try {
-          const response = await apiCall(`/devices/${deviceId}/qr`);
+          // Backend expects body for GET /api/devices/:deviceId/qr, so include it.
+          // Note: Sending a body with GET requests is unconventional and might be stripped by some servers.
+          // If this causes issues, consider changing the backend /api/devices/:deviceId/qr to a POST endpoint.
+          const dataToSend = { device_id: deviceId, apikey: API_KEY };
+          const response = await apiCall(`/devices/${deviceId}/qr`, {
+            method: "GET", // Keep as GET to match the backend's current route definition
+            body: JSON.stringify(dataToSend),
+          });
 
           if (response.qr_code) {
             const qrContainer = document.getElementById("qrCodeContainer");
