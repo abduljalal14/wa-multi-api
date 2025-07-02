@@ -594,7 +594,7 @@ app.delete("/api/device", validateRequest, async (req, res) => {
   }
 });
 
-app.get("/api/device/qr", validateRequest, (req, res) => {
+app.post("/api/device/qr", validateRequest, (req, res) => {
   const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 

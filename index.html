@@ -423,8 +423,7 @@
 
         <div id="alertContainer"></div>
 
-        <div class="devices-grid" id="devicesGrid">
-          </div>
+        <div class="devices-grid" id="devicesGrid"></div>
       </div>
     </div>
 
@@ -597,8 +596,14 @@
           });
 
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.message || response.statusText}`);
+            const errorData = await response
+              .json()
+              .catch(() => ({ message: "Unknown error" }));
+            throw new Error(
+              `HTTP error! status: ${response.status}, message: ${
+                errorData.message || response.statusText
+              }`
+            );
           }
 
           return await response.json();
@@ -644,7 +649,8 @@
         try {
           // Add apikey and device_id to the body for DELETE /api/device
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          await apiCall(`/device`, { // Corrected endpoint: removed /:deviceId from URL
+          await apiCall(`/device`, {
+            // Corrected endpoint: removed /:deviceId from URL
             method: "DELETE",
             body: JSON.stringify(dataToSend),
           });
@@ -662,7 +668,8 @@
         try {
           // Add apikey and device_id to the body for POST /api/device/logout
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          await apiCall(`/device/logout`, { // Corrected endpoint: removed /:deviceId from URL
+          await apiCall(`/device/logout`, {
+            // Corrected endpoint: removed /:deviceId from URL
             method: "POST",
             body: JSON.stringify(dataToSend),
           });
@@ -677,8 +684,14 @@
       async function sendMessage(deviceId, number, message) {
         try {
           // Add apikey and device_id to the body for POST /api/device/send-message
-          const dataToSend = { number, message, device_id: deviceId, apikey: API_KEY };
-          const response = await apiCall(`/device/send-message`, { // Corrected endpoint: removed /:deviceId from URL
+          const dataToSend = {
+            number,
+            message,
+            device_id: deviceId,
+            apikey: API_KEY,
+          };
+          const response = await apiCall(`/device/send-message`, {
+            // Corrected endpoint: removed /:deviceId from URL
             method: "POST",
             body: JSON.stringify(dataToSend),
           });
@@ -694,7 +707,8 @@
         try {
           // Add apikey and device_id to the body for POST /api/device/test-webhook
           const dataToSend = { device_id: deviceId, apikey: API_KEY };
-          const response = await apiCall(`/device/test-webhook`, { // Corrected endpoint: removed /:deviceId from URL
+          const response = await apiCall(`/device/test-webhook`, {
+            // Corrected endpoint: removed /:deviceId from URL
             method: "POST",
             body: JSON.stringify(dataToSend),
           });
@@ -720,35 +734,28 @@
 
       async function loadQRCode(deviceId) {
         try {
-            // Send device_id and apikey as URL query parameters for GET request
-            const params = new URLSearchParams({
-                device_id: deviceId,
-                apikey: API_KEY
-            }).toString();
+          const response = await apiCall(`/device/qr`, {
+            method: "POST",
+            body: JSON.stringify({
+              device_id: deviceId,
+              apikey: API_KEY,
+            }),
+          });
 
-            const dataToSend = { device_id: deviceId, apikey: API_KEY };
-            
-            const response = await apiCall(`/device/qr?${params}`, {
-                method: "GET",
-                // Remove the body for GET requests
-                // body: JSON.stringify(dataToSend), 
-            });
-
-            if (response.qr_code) {
-                const qrContainer = document.getElementById("qrCodeContainer");
-                qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-                    response.qr_code
-                )}" alt="QR Code" class="qr-code">`;
-            } else {
-                document.getElementById("qrCodeContainer").innerHTML =
-                    "<p>QR Code not available. Device might be already authenticated.</p>";
-            }
-        } catch (error) {
+          if (response.qr_code) {
+            const qrContainer = document.getElementById("qrCodeContainer");
+            qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+              response.qr_code
+            )}" alt="QR Code" class="qr-code">`;
+          } else {
             document.getElementById("qrCodeContainer").innerHTML =
-                "<p>Error loading QR Code. Device might be ready or there was an error.</p>";
+              "<p>QR Code not available. Device might be already authenticated.</p>";
+          }
+        } catch (error) {
+          document.getElementById("qrCodeContainer").innerHTML =
+            "<p>Error loading QR Code. Device might be ready or there was an error.</p>";
         }
-    }
-
+      }
 
       // UI Functions
       function displayDevices(devices) {
