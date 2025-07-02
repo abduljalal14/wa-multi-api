@@ -424,12 +424,10 @@
         <div id="alertContainer"></div>
 
         <div class="devices-grid" id="devicesGrid">
-          <!-- Devices will be loaded here -->
-        </div>
+          </div>
       </div>
     </div>
 
-    <!-- Create Device Modal -->
     <div id="createDeviceModal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -471,7 +469,6 @@
       </div>
     </div>
 
-    <!-- QR Code Modal -->
     <div id="qrModal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -491,7 +488,6 @@
       </div>
     </div>
 
-    <!-- Send Message Modal -->
     <div id="sendMessageModal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -528,7 +524,6 @@
       </div>
     </div>
 
-    <!-- Bulk Message Modal -->
     <div id="bulkMessageModal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -575,6 +570,8 @@
 
     <script>
       const API_BASE = "http://localhost:4001/api";
+      // Define your API Key here
+      const API_KEY = "YOUR_SUPER_SECRET_API_KEY"; //
       let currentDeviceId = null;
       let qrInterval = null;
 
@@ -588,11 +585,14 @@
       // API Functions
       async function apiCall(endpoint, options = {}) {
         try {
+          const headers = { //
+            "Content-Type": "application/json", //
+            "x-api-key": API_KEY, // Add the API key header
+            ...options.headers, //
+          }; //
+
           const response = await fetch(`${API_BASE}${endpoint}`, {
-            headers: {
-              "Content-Type": "application/json",
-              ...options.headers,
-            },
+            headers: headers, // Use the combined headers
             ...options,
           });
 

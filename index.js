@@ -11,8 +11,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://127.0.0.1:5500', 'http://localhost:4000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', null],
-  credentials: true,
+  origin: '*', // Ini juga izinkan semua origin
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -34,6 +33,9 @@ if (!fs.existsSync(SESSIONS_DIR)) {
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
+// Global API Key (gunakan environment variable di produksi)
+const GLOBAL_API_KEY = process.env.API_KEY || "YOUR_SUPER_SECRET_API_KEY"; // GANTI INI DENGAN KEY YANG LEBIH KUAT DAN GUNAKAN ENV VAR!
+
 // Class untuk mengelola WhatsApp Client
 class WhatsAppManager {
   constructor(deviceId, config = {}) {
@@ -48,7 +50,7 @@ class WhatsAppManager {
     this.isClientReady = false;
     this.client = null;
     this.configFile = path.join(CONFIG_DIR, `${deviceId}.json`);
-    
+
     this.loadConfig();
     this.initializeClient();
   }
@@ -99,6 +101,7 @@ class WhatsAppManager {
         timeout: 30000,
       });
       console.log(`✅ [${this.deviceId}] Webhook berhasil dikirim`);
+      console.log(`📡 Response:`, response.data);
     } catch (error) {
       console.error(`❌ [${this.deviceId}] Error mengirim webhook:`, error.message);
     }
@@ -207,7 +210,7 @@ class WhatsAppManager {
       if (reason === "LOGOUT") {
         console.log(`🗑️ [${this.deviceId}] Sesi dihapus karena logout manual`);
       }
-      
+
       setTimeout(() => {
         console.log(`🔄 [${this.deviceId}] Re-initializing client...`);
         this.client.initialize();
@@ -221,7 +224,7 @@ class WhatsAppManager {
 
     this.client.on("message", async (msg) => {
       if (msg.isStatus) return;
-      
+
       console.log(`📨 [${this.deviceId}] Pesan diterima:`, msg.from, "=>", msg.body);
 
       // Kirim ke webhook
@@ -229,7 +232,7 @@ class WhatsAppManager {
         try {
           const contact = await msg.getContact();
           const chat = await msg.getChat();
-          
+
           const hasMedia = msg.hasMedia;
           let mediaMime = "";
           let mediaName = "";
@@ -403,15 +406,15 @@ function loadExistingDevices() {
   try {
     const configFiles = fs.readdirSync(CONFIG_DIR).filter(file => file.endsWith('.json'));
     console.log(`📁 Ditemukan ${configFiles.length} device yang tersimpan`);
-    
+
     configFiles.forEach(file => {
       const deviceId = file.replace('.json', '');
       const configPath = path.join(CONFIG_DIR, file);
-      
+
       try {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         console.log(`🔄 Loading device: ${deviceId}`);
-        
+
         const manager = new WhatsAppManager(deviceId, config);
         clients.set(deviceId, manager);
       } catch (error) {
@@ -423,20 +426,64 @@ function loadExistingDevices() {
   }
 }
 
+// Middleware untuk validasi device_id dan apikey
+const validateRequest = (req, res, next) => {
+  const { device_id, apikey } = req.body;
+
+  if (!device_id) {
+    return res.status(400).json({
+      status: "error",
+      message: "Parameter 'device_id' wajib disertakan dalam body request."
+    });
+  }
+
+  if (!apikey) {
+    return res.status(401).json({
+      status: "error",
+      message: "Parameter 'apikey' wajib disertakan dalam body request."
+    });
+  }
+
+  if (apikey !== GLOBAL_API_KEY) {
+    return res.status(403).json({
+      status: "error",
+      message: "API Key tidak valid."
+    });
+  }
+
+  // Jika device_id ada di params dan body, pastikan konsisten
+  if (req.params.deviceId && req.params.deviceId !== device_id) {
+    return res.status(400).json({
+      status: "error",
+      message: "Device ID dalam URL tidak cocok dengan Device ID dalam body."
+    });
+  }
+
+  // Set deviceId dari body ke params jika belum ada (untuk konsistensi)
+  if (!req.params.deviceId) {
+    req.params.deviceId = device_id;
+  }
+
+  next(); // Lanjutkan ke handler route
+};
+
 // API Routes
 
-// Get all devices
-app.get("/api/devices", (req, res) => {
-  res.json({
-    status: "success",
-    devices: getAllClients(),
-    total: clients.size
-  });
-});
+// Apply validateRequest middleware to specific routes
+// For routes that take deviceId from URL params, device_id in body should match or be omitted.
+// For routes like /api/devices (POST), device_id will be generated, so validate only apikey.
 
-// Create new device
+// Create new device (no device_id in body required, it's generated) - ONLY check apikey
 app.post("/api/devices", (req, res) => {
-  const { device_name, webhook_url, auto_reply } = req.body;
+  const { device_name, webhook_url, auto_reply, apikey } = req.body;
+
+  if (!apikey || apikey !== GLOBAL_API_KEY) {
+    return res.status(403).json({
+      status: "error",
+      message: "API Key tidak valid."
+    });
+  }
+
   const deviceId = uuidv4();
 
   try {
@@ -463,8 +510,20 @@ app.post("/api/devices", (req, res) => {
   }
 });
 
-// Get specific device
-app.get("/api/devices/:deviceId", (req, res) => {
+// Get all devices (No specific device_id required, but an apikey might be desired for security)
+app.get("/api/devices", (req, res) => {
+  // You might want to add an API key check here too, but it's not tied to a specific device.
+  // For simplicity, I'm omitting a body-based API key check for GET /api/devices
+  // If you want it, you'd add a separate middleware for global API key validation.
+  res.json({
+    status: "success",
+    devices: getAllClients(),
+    total: clients.size
+  });
+});
+
+// Routes requiring device_id and apikey in the body
+app.get("/api/devices/:deviceId", validateRequest, (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
@@ -481,8 +540,7 @@ app.get("/api/devices/:deviceId", (req, res) => {
   });
 });
 
-// Update device config
-app.put("/api/devices/:deviceId", (req, res) => {
+app.put("/api/devices/:deviceId", validateRequest, (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
@@ -495,11 +553,11 @@ app.put("/api/devices/:deviceId", (req, res) => {
 
   try {
     const { device_name, webhook_url, auto_reply } = req.body;
-    
+
     if (device_name !== undefined) manager.config.device_name = device_name;
     if (webhook_url !== undefined) manager.config.webhook_url = webhook_url;
     if (auto_reply !== undefined) manager.config.auto_reply = auto_reply;
-    
+
     manager.saveConfig();
 
     res.json({
@@ -516,8 +574,7 @@ app.put("/api/devices/:deviceId", (req, res) => {
   }
 });
 
-// Delete device
-app.delete("/api/devices/:deviceId", async (req, res) => {
+app.delete("/api/devices/:deviceId", validateRequest, async (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
@@ -531,7 +588,7 @@ app.delete("/api/devices/:deviceId", async (req, res) => {
   try {
     await manager.logout();
     clients.delete(deviceId);
-    
+
     // Hapus config file
     if (fs.existsSync(manager.configFile)) {
       fs.unlinkSync(manager.configFile);
@@ -550,8 +607,7 @@ app.delete("/api/devices/:deviceId", async (req, res) => {
   }
 });
 
-// Get QR Code
-app.get("/api/devices/:deviceId/qr", (req, res) => {
+app.get("/api/devices/:deviceId/qr", validateRequest, (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
@@ -576,10 +632,9 @@ app.get("/api/devices/:deviceId/qr", (req, res) => {
   });
 });
 
-// Send message
-app.post("/api/devices/:deviceId/send-message", async (req, res) => {
+app.post("/api/devices/:deviceId/send-message", validateRequest, async (req, res) => {
   const { deviceId } = req.params;
-  const { number, message } = req.body;
+  const { number, message } = req.body; // device_id and apikey are handled by middleware
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -599,7 +654,7 @@ app.post("/api/devices/:deviceId/send-message", async (req, res) => {
   if (!number || !message) {
     return res.status(400).json({
       status: "error",
-      message: "Parameter number dan message wajib diisi"
+      message: "Parameter 'number' dan 'message' wajib diisi"
     });
   }
 
@@ -620,8 +675,7 @@ app.post("/api/devices/:deviceId/send-message", async (req, res) => {
   }
 });
 
-// Logout device
-app.post("/api/devices/:deviceId/logout", async (req, res) => {
+app.post("/api/devices/:deviceId/logout", validateRequest, async (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
@@ -647,8 +701,7 @@ app.post("/api/devices/:deviceId/logout", async (req, res) => {
   }
 });
 
-// Test webhook
-app.post("/api/devices/:deviceId/test-webhook", async (req, res) => {
+app.post("/api/devices/:deviceId/test-webhook", validateRequest, async (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
@@ -702,11 +755,13 @@ app.post("/api/devices/:deviceId/test-webhook", async (req, res) => {
   }
 });
 
-// Global status
+// Global status and Health check - These typically don't require device_id or apikey in the body,
+// but you might enforce a global API key for them if desired.
+// For now, they remain open for ease of monitoring.
 app.get("/api/status", (req, res) => {
   const devices = getAllClients();
   const readyDevices = devices.filter(d => d.is_ready).length;
-  
+
   res.json({
     status: "success",
     total_devices: devices.length,
@@ -716,7 +771,6 @@ app.get("/api/status", (req, res) => {
   });
 });
 
-// Health check
 app.get("/api/health", (req, res) => {
   res.json({
     status: "healthy",
@@ -727,35 +781,44 @@ app.get("/api/health", (req, res) => {
 });
 
 // Backward compatibility endpoints (untuk compatibility dengan kode lama)
-app.get("/get_qr", (req, res) => {
-  // Ambil device pertama jika ada
-  const firstDevice = clients.values().next().value;
-  if (!firstDevice || !firstDevice.currentQR) {
+// These will also now require device_id and apikey in the body for consistency.
+app.get("/get_qr", validateRequest, (req, res) => {
+  const { device_id } = req.body;
+  const manager = getClient(device_id);
+
+  if (!manager) {
     return res.status(404).json({
       status: "error",
-      message: "QR Code tidak tersedia. Buat device baru atau cek /api/devices"
+      message: "Device tidak ditemukan. Buat device baru atau cek /api/devices"
+    });
+  }
+
+  if (!manager.currentQR) {
+    return res.status(404).json({
+      status: "error",
+      message: "QR Code tidak tersedia. Device mungkin sudah terautentikasi."
     });
   }
 
   res.json({
     status: "success",
-    qr_code: firstDevice.currentQR,
+    qr_code: manager.currentQR,
     message: "Scan QR code ini di WhatsApp (Compatibility mode)"
   });
 });
 
-app.post("/send-message", async (req, res) => {
-  const { number, message } = req.body;
-  const firstDevice = clients.values().next().value;
-  
-  if (!firstDevice) {
+app.post("/send-message", validateRequest, async (req, res) => {
+  const { number, message, device_id } = req.body;
+  const manager = getClient(device_id);
+
+  if (!manager) {
     return res.status(404).json({
       status: "error",
-      message: "Tidak ada device yang tersedia. Buat device baru di /api/devices"
+      message: "Device tidak ditemukan."
     });
   }
 
-  if (!firstDevice.isClientReady) {
+  if (!manager.isClientReady) {
     return res.status(503).json({
       status: "error",
       message: "Device belum siap"
@@ -763,7 +826,7 @@ app.post("/send-message", async (req, res) => {
   }
 
   try {
-    await firstDevice.sendMessage(number, message);
+    await manager.sendMessage(number, message);
     res.json({
       status: "success",
       message: "Pesan berhasil dikirim (Compatibility mode)"
@@ -846,4 +909,5 @@ app.listen(PORT, () => {
   console.log("📁 Config directory: " + path.resolve(CONFIG_DIR));
   console.log("📁 Sessions directory: " + path.resolve(SESSIONS_DIR));
   console.log(`📱 Loaded ${clients.size} existing devices`);
+  console.log(`🔑 Global API Key (for testing): ${GLOBAL_API_KEY} (CHANGE THIS IN PRODUCTION!)`);
 });
