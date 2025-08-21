@@ -3,57 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>README - WhatsApp Multi-Device Bot API</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.6;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: #f4f4f4;
-    }
-    h1, h2, h3 {
-      color: #333;
-    }
-    pre {
-      background-color: #1e1e1e;
-      color: #ffffff;
-      padding: 15px;
-      border-radius: 5px;
-      overflow-x: auto;
-    }
-    code {
-      font-family: Consolas, monospace;
-    }
-    ul {
-      margin: 10px 0;
-      padding-left: 20px;
-    }
-    li {
-      margin-bottom: 10px;
-    }
-    .note {
-      background-color: #fff3cd;
-      padding: 10px;
-      border-left: 4px solid #ffca28;
-      margin: 10px 0;
-    }
-    .endpoint-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-    }
-    .endpoint-table th, .endpoint-table td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      text-align: left;
-    }
-    .endpoint-table th {
-      background-color: #4CAF50;
-      color: white;
-    }
-  </style>
 </head>
 <body>
   <h1>WhatsApp Multi-Device Bot API</h1>
