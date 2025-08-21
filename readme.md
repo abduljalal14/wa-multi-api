@@ -21,8 +21,8 @@
   <p>Ikuti langkah-langkah berikut untuk menginstal aplikasi:</p>
   <ol>
     <li><strong>Kloning Repositori (Opsional)</strong>
-      <pre><code>git clone &lt;https://github.com/abduljalal14/wa-multi-api&gt;
-cd &lt;wa-multi-api&gt;</code></pre>
+      <pre><code>git clone https://github.com/abduljalal14/wa-multi-api;
+cd wa-multi-api</code></pre>
       Atau, unduh kode sumber secara manual dan ekstrak ke direktori pilihan Anda.
     </li>
     <li><strong>Instal Dependensi</strong>
