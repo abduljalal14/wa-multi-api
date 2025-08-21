@@ -199,11 +199,5 @@ cd &lt;wa-multi-api&gt;</code></pre>
     <li><strong>Log Server</strong>: Periksa log di konsol server untuk detail error (misalnya, <code>console.error</code>).</li>
   </ul>
 
-  <h2>Lisensi</h2>
-  <p>Proyek ini dilisensikan di bawah [Masukkan Lisensi Anda, misalnya MIT License].</p>
-
-  <h2>Kontribusi</h2>
-  <p>Jika Anda ingin berkontribusi, silakan fork repositori ini, buat perubahan, dan ajukan pull request. Untuk pertanyaan, hubungi [Masukkan Kontak Anda].</p>
-
 </body>
 </html>
