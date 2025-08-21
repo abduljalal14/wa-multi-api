@@ -1,4 +1,4 @@
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const express = require("express");
 const cors = require("cors");
 const qrcode = require("qrcode-terminal");
@@ -6,13 +6,12 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
-const cron = require("node-cron"); // npm install node-cron
 
 const app = express();
 
 // Middleware
 app.use(cors({
-  origin: '*',
+  origin: '*', // Ini juga izinkan semua origin
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -34,111 +33,8 @@ if (!fs.existsSync(SESSIONS_DIR)) {
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
-// Global API Key
-const GLOBAL_API_KEY = process.env.API_KEY || "YOUR_SUPER_SECRET_API_KEY";
-
-// Utility functions untuk cleanup
-class SessionCleaner {
-  static async cleanupSessionFolder(sessionPath) {
-    try {
-      if (!fs.existsSync(sessionPath)) return;
-
-      const foldersToClean = [
-        'Default/Cache',
-        'Default/Code Cache',
-        'Default/GPUCache',
-        'Default/Service Worker/CacheStorage',
-        'Default/Service Worker/ScriptCache',
-        'Default/blob_storage',
-        'Default/File System',
-        'Default/IndexedDB',
-        'Default/Local Storage',
-        'Default/Session Storage',
-        'Default/WebStorage',
-        'ShaderCache',
-        'GraphiteDawnCache'
-      ];
-
-      for (const folder of foldersToClean) {
-        const folderPath = path.join(sessionPath, folder);
-        if (fs.existsSync(folderPath)) {
-          fs.rmSync(folderPath, { recursive: true, force: true });
-          console.log(`🧹 Cleaned: ${folder}`);
-        }
-      }
-
-      // Clean log files
-      const logFiles = fs.readdirSync(sessionPath).filter(file => 
-        file.endsWith('.log') || file.endsWith('.tmp') || file.startsWith('debug')
-      );
-      
-      for (const logFile of logFiles) {
-        const logPath = path.join(sessionPath, logFile);
-        fs.unlinkSync(logPath);
-        console.log(`🧹 Removed log: ${logFile}`);
-      }
-
-      console.log(`✅ Session cleanup completed for: ${sessionPath}`);
-    } catch (error) {
-      console.error(`❌ Error cleaning session folder: ${error.message}`);
-    }
-  }
-
-  static async getDirectorySize(dirPath) {
-    if (!fs.existsSync(dirPath)) return 0;
-    
-    let totalSize = 0;
-    const files = fs.readdirSync(dirPath);
-    
-    for (const file of files) {
-      const filePath = path.join(dirPath, file);
-      const stats = fs.statSync(filePath);
-      
-      if (stats.isDirectory()) {
-        totalSize += await this.getDirectorySize(filePath);
-      } else {
-        totalSize += stats.size;
-      }
-    }
-    
-    return totalSize;
-  }
-
-  static formatBytes(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
-
-  static async cleanupOldSessions() {
-    try {
-      const sessionDirs = fs.readdirSync(SESSIONS_DIR);
-      
-      for (const sessionDir of sessionDirs) {
-        const sessionPath = path.join(SESSIONS_DIR, sessionDir);
-        const stats = fs.statSync(sessionPath);
-        
-        // Cleanup sessions older than 7 days that are not active
-        const daysSinceModified = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
-        
-        if (daysSinceModified > 7) {
-          const deviceId = sessionDir.replace('session-', '');
-          const manager = clients.get(deviceId);
-          
-          // Only cleanup if device is not active
-          if (!manager || !manager.isClientReady) {
-            console.log(`🧹 Cleaning up old session: ${sessionDir}`);
-            await this.cleanupSessionFolder(sessionPath);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error during scheduled cleanup:', error.message);
-    }
-  }
-}
+// Global API Key (gunakan environment variable di produksi)
+const GLOBAL_API_KEY = process.env.API_KEY || "YOUR_SUPER_SECRET_API_KEY"; // GANTI INI DENGAN KEY YANG LEBIH KUAT DAN GUNAKAN ENV VAR!
 
 // Class untuk mengelola WhatsApp Client
 class WhatsAppManager {
@@ -148,15 +44,12 @@ class WhatsAppManager {
       webhook_url: config.webhook_url || null,
       device_name: config.device_name || `Device-${deviceId}`,
       auto_reply: config.auto_reply || false,
-      cleanup_interval: config.cleanup_interval || 24, // hours
       ...config
     };
     this.currentQR = null;
     this.isClientReady = false;
     this.client = null;
     this.configFile = path.join(CONFIG_DIR, `${deviceId}.json`);
-    this.sessionPath = path.join(SESSIONS_DIR, `session-${deviceId}`);
-    this.lastCleanup = null;
 
     this.loadConfig();
     this.initializeClient();
@@ -167,7 +60,6 @@ class WhatsAppManager {
       if (fs.existsSync(this.configFile)) {
         const savedConfig = JSON.parse(fs.readFileSync(this.configFile, "utf8"));
         this.config = { ...this.config, ...savedConfig };
-        this.lastCleanup = savedConfig.last_cleanup || null;
         console.log(`📁 [${this.deviceId}] Konfigurasi dimuat dari file`);
       } else {
         this.saveConfig();
@@ -183,7 +75,6 @@ class WhatsAppManager {
       const configToSave = {
         ...this.config,
         last_updated: new Date().toISOString(),
-        last_cleanup: this.lastCleanup,
         version: "2.0.0",
         device_id: this.deviceId
       };
@@ -191,51 +82,6 @@ class WhatsAppManager {
       console.log(`💾 [${this.deviceId}] Konfigurasi disimpan`);
     } catch (error) {
       console.error(`❌ [${this.deviceId}] Error saving config:`, error.message);
-    }
-  }
-
-  async cleanupSession() {
-    try {
-      if (this.isClientReady) {
-        console.log(`⏳ [${this.deviceId}] Skipping cleanup - client is active`);
-        return;
-      }
-
-      console.log(`🧹 [${this.deviceId}] Starting session cleanup...`);
-      
-      // Get size before cleanup
-      const sizeBefore = await SessionCleaner.getDirectorySize(this.sessionPath);
-      
-      // Perform cleanup
-      await SessionCleaner.cleanupSessionFolder(this.sessionPath);
-      
-      // Get size after cleanup
-      const sizeAfter = await SessionCleaner.getDirectorySize(this.sessionPath);
-      const savedSpace = sizeBefore - sizeAfter;
-      
-      this.lastCleanup = new Date().toISOString();
-      this.saveConfig();
-      
-      console.log(`✅ [${this.deviceId}] Cleanup completed. Saved: ${SessionCleaner.formatBytes(savedSpace)}`);
-      
-      return {
-        size_before: SessionCleaner.formatBytes(sizeBefore),
-        size_after: SessionCleaner.formatBytes(sizeAfter),
-        saved_space: SessionCleaner.formatBytes(savedSpace)
-      };
-    } catch (error) {
-      console.error(`❌ [${this.deviceId}] Error during cleanup:`, error.message);
-      throw error;
-    }
-  }
-
-  async getSessionSize() {
-    try {
-      const size = await SessionCleaner.getDirectorySize(this.sessionPath);
-      return SessionCleaner.formatBytes(size);
-    } catch (error) {
-      console.error(`❌ [${this.deviceId}] Error getting session size:`, error.message);
-      return 'Unknown';
     }
   }
 
@@ -255,6 +101,7 @@ class WhatsAppManager {
         timeout: 30000,
       });
       console.log(`✅ [${this.deviceId}] Webhook berhasil dikirim`);
+      console.log(`📡 Response:`, response.data);
     } catch (error) {
       console.error(`❌ [${this.deviceId}] Error mengirim webhook:`, error.message);
     }
@@ -276,6 +123,42 @@ class WhatsAppManager {
       throw error;
     }
   }
+
+ async sendImage(chatId, image, caption = '') {
+  if (!this.isClientReady || !this.client) {
+    throw new Error("Client tidak siap");
+  }
+
+  try {
+    const formattedChatId = chatId.includes("@c.us") ? chatId : `${chatId}@c.us`;
+    let media;
+
+    // Cek apakah image adalah URL atau base64
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      const { buffer, mimeType } = await downloadImage(image);
+      media = new MessageMedia(mimeType, buffer.toString('base64'), `image-${Date.now()}`);
+    } else if (image.startsWith('data:image')) {
+      // Gambar dalam format base64
+      const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        throw new Error('Format base64 tidak valid');
+      }
+      const mimeType = matches[1];
+      const base64Data = matches[2];
+      media = new MessageMedia(mimeType, base64Data, `image-${Date.now()}`);
+    } else {
+      throw new Error('Format gambar tidak valid. Gunakan URL atau base64.');
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const result = await this.client.sendMessage(formattedChatId, media, { caption });
+    console.log(`✅ [${this.deviceId}] Gambar berhasil dikirim ke:`, formattedChatId);
+    return result;
+  } catch (error) {
+    console.error(`❌ [${this.deviceId}] Gagal mengirim gambar:`, error.message);
+    throw error;
+  }
+}
 
   initializeClient() {
     this.client = new Client({
@@ -323,37 +206,6 @@ class WhatsAppManager {
           "--use-gl=swiftshader",
           "--use-fake-ui-for-media-stream",
           "--disable-blink-features=AutomationControlled",
-          // Additional args for reduced cache
-          "--disable-background-networking",
-          "--disable-backgrounding-occluded-windows",
-          "--disable-renderer-backgrounding",
-          "--disable-features=TranslateUI",
-          "--disable-ipc-flooding-protection",
-          "--disable-logging",
-          "--disable-extensions",
-          "--disable-plugins",
-          "--disable-media-stream",
-          "--disable-remote-fonts",
-          "--disable-shared-workers",
-          "--disable-storage-reset",
-          "--disable-webgl2",
-          "--disable-webrtc",
-          "--memory-pressure-off",
-          "--no-crash-upload",
-          "--no-default-browser-check",
-          "--no-experiments",
-          "--no-first-run",
-          "--no-service-autorun",
-          "--no-wifi",
-          "--disable-features=VizDisplayCompositor,VizServiceDisplayCompositor",
-          "--disk-cache-size=0",
-          "--media-cache-size=0",
-          "--aggressive-cache-discard",
-          "--disable-application-cache",
-          "--disable-offline-load-stale-cache",
-          "--disable-disk-cache",
-          "--disable-session-storage",
-          "--disable-local-storage"
         ],
       },
     });
@@ -375,23 +227,15 @@ class WhatsAppManager {
       this.currentQR = null;
     });
 
-    this.client.on("ready", async () => {
+    this.client.on("ready", () => {
       console.log(`🚀 [${this.deviceId}] WhatsApp Bot siap digunakan!`);
       console.log(`📱 [${this.deviceId}] Nomor bot:`, this.client.info.wid.user);
       this.isClientReady = true;
-      
-      // Auto cleanup after ready if needed
-      if (this.shouldCleanup()) {
-        setTimeout(() => {
-          this.cleanupSession().catch(console.error);
-        }, 5000); // Wait 5 seconds after ready
-      }
     });
 
     this.client.on("disconnected", async (reason) => {
       console.log(`❌ [${this.deviceId}] WhatsApp terputus:`, reason);
       this.isClientReady = false;
-      
       try {
         await this.client.destroy();
         console.log(`✅ [${this.deviceId}] Client destroyed successfully`);
@@ -401,10 +245,6 @@ class WhatsAppManager {
 
       if (reason === "LOGOUT") {
         console.log(`🗑️ [${this.deviceId}] Sesi dihapus karena logout manual`);
-        // Cleanup session after logout
-        setTimeout(() => {
-          this.cleanupSession().catch(console.error);
-        }, 2000);
       }
 
       setTimeout(() => {
@@ -513,17 +353,6 @@ class WhatsAppManager {
     });
   }
 
-  shouldCleanup() {
-    if (!this.lastCleanup) return true;
-    
-    const cleanupInterval = this.config.cleanup_interval || 24; // hours
-    const lastCleanupTime = new Date(this.lastCleanup).getTime();
-    const now = Date.now();
-    const hoursSinceLastCleanup = (now - lastCleanupTime) / (1000 * 60 * 60);
-    
-    return hoursSinceLastCleanup >= cleanupInterval;
-  }
-
   async handleCommands(msg) {
     try {
       const command = msg.body.toLowerCase();
@@ -531,31 +360,13 @@ class WhatsAppManager {
 
       switch (command) {
         case "!info":
-          const sessionSize = await this.getSessionSize();
           await chat.sendMessage(`🤖 Device Info:
 📱 Device ID: ${this.deviceId}
 📋 Device Name: ${this.config.device_name}
 📞 Number: ${this.client.info.wid.user}
 🔋 Battery: ${this.client.info.battery}%
 📡 Status: Connected
-🔗 Webhook: ${this.config.webhook_url ? "Active" : "Not Set"}
-💾 Session Size: ${sessionSize}
-🧹 Last Cleanup: ${this.lastCleanup || "Never"}`);
-          break;
-
-        case "!cleanup":
-          await chat.sendMessage(`🧹 Starting session cleanup...`);
-          try {
-            const result = await this.cleanupSession();
-            await chat.sendMessage(`✅ Cleanup completed!\n💾 Saved: ${result.saved_space}\n📊 Before: ${result.size_before} → After: ${result.size_after}`);
-          } catch (error) {
-            await chat.sendMessage(`❌ Cleanup failed: ${error.message}`);
-          }
-          break;
-
-        case "!size":
-          const size = await this.getSessionSize();
-          await chat.sendMessage(`📊 Current session size: ${size}`);
+🔗 Webhook: ${this.config.webhook_url ? "Active" : "Not Set"}`);
           break;
 
         case "!test":
@@ -567,6 +378,7 @@ class WhatsAppManager {
           break;
 
         default:
+          // Handle other commands if needed
           break;
       }
     } catch (error) {
@@ -581,11 +393,9 @@ class WhatsAppManager {
         await this.client.destroy();
       }
 
-      // Cleanup session before deleting
-      await this.cleanupSession();
-
-      if (fs.existsSync(this.sessionPath)) {
-        fs.rmSync(this.sessionPath, { recursive: true, force: true });
+      const sessionPath = path.join(SESSIONS_DIR, `session-${this.deviceId}`);
+      if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
         console.log(`🗑️ [${this.deviceId}] Session folder deleted`);
       }
 
@@ -600,9 +410,7 @@ class WhatsAppManager {
     }
   }
 
-  async getStatus() {
-    const sessionSize = await this.getSessionSize();
-    
+  getStatus() {
     return {
       device_id: this.deviceId,
       device_name: this.config.device_name,
@@ -611,9 +419,6 @@ class WhatsAppManager {
       number: this.isClientReady && this.client.info ? this.client.info.wid.user : null,
       battery: this.isClientReady && this.client.info ? this.client.info.battery : null,
       webhook_url: this.config.webhook_url,
-      session_size: sessionSize,
-      last_cleanup: this.lastCleanup,
-      cleanup_interval: this.config.cleanup_interval,
       config: this.config
     };
   }
@@ -624,10 +429,10 @@ function getClient(deviceId) {
   return clients.get(deviceId);
 }
 
-async function getAllClients() {
+function getAllClients() {
   const result = [];
   for (const [deviceId, manager] of clients.entries()) {
-    result.push(await manager.getStatus());
+    result.push(manager.getStatus());
   }
   return result;
 }
@@ -657,11 +462,17 @@ function loadExistingDevices() {
   }
 }
 
-// Scheduled cleanup every 6 hours
-cron.schedule('0 */6 * * *', async () => {
-  console.log('🧹 Starting scheduled cleanup...');
-  await SessionCleaner.cleanupOldSessions();
-});
+// Helper function untuk mengunduh gambar dari URL
+async function downloadImage(url) {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(response.data, 'binary');
+    const mimeType = response.headers['content-type'];
+    return { buffer, mimeType };
+  } catch (error) {
+    throw new Error(`Gagal mengunduh gambar: ${error.message}`);
+  }
+}
 
 // Middleware untuk validasi device_id dan apikey
 const validateRequest = (req, res, next) => {
@@ -688,15 +499,18 @@ const validateRequest = (req, res, next) => {
     });
   }
 
+  // Set deviceId dari body ke params untuk konsistensi di handler route
+  // Ini penting karena handler route masih mungkin mengakses req.params.deviceId
   req.params.deviceId = device_id;
-  next();
+
+  next(); // Lanjutkan ke handler route
 };
 
-// API Routes - keeping the same structure but adding cleanup endpoints
+// API Routes
 
-// Create new device
+// Create new device (no device_id in body required, it's generated) - ONLY check apikey
 app.post("/api/devices", (req, res) => {
-  const { device_name, webhook_url, auto_reply, cleanup_interval, apikey } = req.body;
+  const { device_name, webhook_url, auto_reply, apikey } = req.body;
 
   if (!apikey || apikey !== GLOBAL_API_KEY) {
     return res.status(403).json({
@@ -711,8 +525,7 @@ app.post("/api/devices", (req, res) => {
     const config = {
       device_name: device_name || `Device-${deviceId}`,
       webhook_url: webhook_url || null,
-      auto_reply: auto_reply || false,
-      cleanup_interval: cleanup_interval || 24 // hours
+      auto_reply: auto_reply || false
     };
 
     const manager = new WhatsAppManager(deviceId, config);
@@ -732,27 +545,21 @@ app.post("/api/devices", (req, res) => {
   }
 });
 
-// Get all devices
-app.get("/api/devices", async (req, res) => {
-  try {
-    const devices = await getAllClients();
-    res.json({
-      status: "success",
-      devices: devices,
-      total: clients.size
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal mengambil daftar device",
-      error: error.message
-    });
-  }
+// Get all devices (No specific device_id required, but an apikey might be desired for security)
+app.get("/api/devices", (req, res) => {
+  // You might want to add an API key check here too, but it's not tied to a specific device.
+  // For simplicity, I'm omitting a body-based API key check for GET /api/devices
+  // If you want it, you'd add a separate middleware for global API key validation.
+  res.json({
+    status: "success",
+    devices: getAllClients(),
+    total: clients.size
+  });
 });
 
-// NEW: Cleanup specific device session
-app.post("/api/device/cleanup", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+// Routes now solely rely on device_id from body
+app.get("/api/device", validateRequest, (req, res) => {
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -762,166 +569,14 @@ app.post("/api/device/cleanup", validateRequest, async (req, res) => {
     });
   }
 
-  try {
-    const result = await manager.cleanupSession();
-    res.json({
-      status: "success",
-      message: "Session cleanup berhasil",
-      cleanup_result: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal melakukan cleanup",
-      error: error.message
-    });
-  }
-});
-
-// NEW: Get session size for specific device
-app.get("/api/device/size", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
-  const manager = getClient(deviceId);
-
-  if (!manager) {
-    return res.status(404).json({
-      status: "error",
-      message: "Device tidak ditemukan"
-    });
-  }
-
-  try {
-    const size = await manager.getSessionSize();
-    res.json({
-      status: "success",
-      device_id: deviceId,
-      session_size: size,
-      last_cleanup: manager.lastCleanup
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal mengambil ukuran session",
-      error: error.message
-    });
-  }
-});
-
-// NEW: Global cleanup for all sessions
-app.post("/api/cleanup-all", async (req, res) => {
-  const { apikey } = req.body;
-
-  if (!apikey || apikey !== GLOBAL_API_KEY) {
-    return res.status(403).json({
-      status: "error",
-      message: "API Key tidak valid."
-    });
-  }
-
-  try {
-    await SessionCleaner.cleanupOldSessions();
-    
-    const results = [];
-    for (const [deviceId, manager] of clients.entries()) {
-      try {
-        const result = await manager.cleanupSession();
-        results.push({
-          device_id: deviceId,
-          ...result
-        });
-      } catch (error) {
-        results.push({
-          device_id: deviceId,
-          error: error.message
-        });
-      }
-    }
-
-    res.json({
-      status: "success",
-      message: "Global cleanup completed",
-      results: results
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal melakukan global cleanup",
-      error: error.message
-    });
-  }
-});
-
-// NEW: Get total sessions directory size
-app.get("/api/sessions/size", async (req, res) => {
-  const { apikey } = req.query;
-
-  if (!apikey || apikey !== GLOBAL_API_KEY) {
-    return res.status(403).json({
-      status: "error",
-      message: "API Key tidak valid."
-    });
-  }
-
-  try {
-    const totalSize = await SessionCleaner.getDirectorySize(SESSIONS_DIR);
-    const sessionDirs = fs.readdirSync(SESSIONS_DIR);
-    
-    const sessionSizes = [];
-    for (const sessionDir of sessionDirs) {
-      const sessionPath = path.join(SESSIONS_DIR, sessionDir);
-      const size = await SessionCleaner.getDirectorySize(sessionPath);
-      sessionSizes.push({
-        session: sessionDir,
-        size: SessionCleaner.formatBytes(size),
-        size_bytes: size
-      });
-    }
-
-    res.json({
-      status: "success",
-      total_size: SessionCleaner.formatBytes(totalSize),
-      total_size_bytes: totalSize,
-      session_count: sessionDirs.length,
-      sessions: sessionSizes
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal mengambil ukuran sessions",
-      error: error.message
-    });
-  }
-});
-
-// Existing routes with minor updates...
-app.get("/api/device", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
-  const manager = getClient(deviceId);
-
-  if (!manager) {
-    return res.status(404).json({
-      status: "error",
-      message: "Device tidak ditemukan"
-    });
-  }
-
-  try {
-    const deviceStatus = await manager.getStatus();
-    res.json({
-      status: "success",
-      device: deviceStatus
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal mengambil status device",
-      error: error.message
-    });
-  }
+  res.json({
+    status: "success",
+    device: manager.getStatus()
+  });
 });
 
 app.put("/api/device", validateRequest, (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -932,12 +587,11 @@ app.put("/api/device", validateRequest, (req, res) => {
   }
 
   try {
-    const { device_name, webhook_url, auto_reply, cleanup_interval } = req.body;
+    const { device_name, webhook_url, auto_reply } = req.body;
 
     if (device_name !== undefined) manager.config.device_name = device_name;
     if (webhook_url !== undefined) manager.config.webhook_url = webhook_url;
     if (auto_reply !== undefined) manager.config.auto_reply = auto_reply;
-    if (cleanup_interval !== undefined) manager.config.cleanup_interval = cleanup_interval;
 
     manager.saveConfig();
 
@@ -956,7 +610,7 @@ app.put("/api/device", validateRequest, (req, res) => {
 });
 
 app.delete("/api/device", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -989,7 +643,7 @@ app.delete("/api/device", validateRequest, async (req, res) => {
 });
 
 app.post("/api/device/qr", validateRequest, (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -1014,7 +668,7 @@ app.post("/api/device/qr", validateRequest, (req, res) => {
 });
 
 app.post("/api/device/send-message", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const { number, message } = req.body;
   const manager = getClient(deviceId);
 
@@ -1056,8 +710,51 @@ app.post("/api/device/send-message", validateRequest, async (req, res) => {
   }
 });
 
+app.post("/api/device/send-image", validateRequest, async (req, res) => {
+  const { deviceId } = req.params; // deviceId diset oleh validateRequest dari req.body.device_id
+  const { number, image, caption, apikey } = req.body;
+  const manager = getClient(deviceId);
+
+  if (!manager) {
+    return res.status(404).json({
+      status: "error",
+      message: "Device tidak ditemukan"
+    });
+  }
+
+  if (!manager.isClientReady) {
+    return res.status(503).json({
+      status: "error",
+      message: "Device belum siap. Tunggu hingga status ready."
+    });
+  }
+
+  if (!number || !image) {
+    return res.status(400).json({
+      status: "error",
+      message: "Parameter 'number' dan 'image' wajib diisi"
+    });
+  }
+
+  try {
+    await manager.sendImage(number, image, caption || '');
+    res.json({
+      status: "success",
+      message: "Gambar berhasil dikirim",
+      to: number.includes("@c.us") ? number : `${number}@c.us`,
+      device_id: deviceId
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Gagal mengirim gambar",
+      error: error.message
+    });
+  }
+});
+
 app.post("/api/device/logout", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -1083,7 +780,7 @@ app.post("/api/device/logout", validateRequest, async (req, res) => {
 });
 
 app.post("/api/device/test-webhook", validateRequest, async (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -1136,54 +833,35 @@ app.post("/api/device/test-webhook", validateRequest, async (req, res) => {
   }
 });
 
-// Global status and Health check
-app.get("/api/status", async (req, res) => {
-  try {
-    const devices = await getAllClients();
-    const readyDevices = devices.filter(d => d.is_ready).length;
-    const totalSessionSize = await SessionCleaner.getDirectorySize(SESSIONS_DIR);
+// Global status and Health check - These typically don't require device_id or apikey in the body,
+// but you might enforce a global API key for them if desired.
+// For now, they remain open for ease of monitoring.
+app.get("/api/status", (req, res) => {
+  const devices = getAllClients();
+  const readyDevices = devices.filter(d => d.is_ready).length;
 
-    res.json({
-      status: "success",
-      total_devices: devices.length,
-      ready_devices: readyDevices,
-      pending_devices: devices.length - readyDevices,
-      total_session_size: SessionCleaner.formatBytes(totalSessionSize),
-      devices: devices
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: "Gagal mengambil status",
-      error: error.message
-    });
-  }
+  res.json({
+    status: "success",
+    total_devices: devices.length,
+    ready_devices: readyDevices,
+    pending_devices: devices.length - readyDevices,
+    devices: devices
+  });
 });
 
-app.get("/api/health", async (req, res) => {
-  try {
-    const totalSessionSize = await SessionCleaner.getDirectorySize(SESSIONS_DIR);
-    
-    res.json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      session_size: SessionCleaner.formatBytes(totalSessionSize),
-      active_devices: clients.size
-    });
-  } catch (error) {
-    res.json({
-      status: "unhealthy",
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
 });
 
-// Backward compatibility endpoints
+// Backward compatibility endpoints (untuk compatibility dengan kode lama)
+// These will also now require device_id and apikey in the body for consistency.
 app.get("/get_qr", validateRequest, (req, res) => {
-  const { deviceId } = req.params;
+  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -1208,8 +886,7 @@ app.get("/get_qr", validateRequest, (req, res) => {
 });
 
 app.post("/send-message", validateRequest, async (req, res) => {
-  const { number, message } = req.body;
-  const { deviceId } = req.params;
+  const { number, message, deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -1258,19 +935,18 @@ app.use((req, res) => {
     available_endpoints: [
       "GET /api/devices - List all devices",
       "POST /api/devices - Create new device",
-      "GET /api/device - Get device info",
-      "PUT /api/device - Update device config",
-      "DELETE /api/device - Delete device",
-      "POST /api/device/qr - Get QR code",
-      "POST /api/device/send-message - Send message",
-      "POST /api/device/logout - Logout device",
-      "POST /api/device/test-webhook - Test webhook",
-      "POST /api/device/cleanup - Cleanup device session",
-      "GET /api/device/size - Get device session size",
-      "POST /api/cleanup-all - Global cleanup all sessions",
-      "GET /api/sessions/size - Get total sessions size",
+      "GET /api/device - Get device info (using device_id in body)",
+      "PUT /api/device - Update device config (using device_id in body)",
+      "DELETE /api/device - Delete device (using device_id in body)",
+      "GET /api/device/qr - Get QR code (using device_id in body)",
+      "POST /api/device/send-message - Send message (using device_id in body)",
+      "POST /api/device/logout - Logout device (using device_id in body)",
+      "POST /api/device/test-webhook - Test webhook (using device_id in body)",
       "GET /api/status - Global status",
-      "GET /api/health - Health check"
+      "GET /api/health - Health check",
+      "GET /get_qr - Backward compatibility for QR (using device_id in body)",
+      "POST /send-message - Backward compatibility for send message (using device_id in body)",
+      "POST /send-image - Backward compatibility for send image (using device_id in body)"
     ]
   });
 });
@@ -1299,35 +975,21 @@ loadExistingDevices();
 
 app.listen(PORT, () => {
   console.log(`🌐 Multi-Device WhatsApp Bot API berjalan di http://localhost:${PORT}`);
-  console.log("📋 API Endpoints:");
-  console.log("  GET  /api/devices              - List all devices");
-  console.log("  POST /api/devices              - Create new device");
-  console.log("  GET  /api/device               - Get device info");
-  console.log("  PUT  /api/device               - Update device config");
-  console.log("  DELETE /api/device             - Delete device");
-  console.log("  POST /api/device/qr            - Get QR code");
-  console.log("  POST /api/device/send-message  - Send message");
-  console.log("  POST /api/device/logout        - Logout device");
-  console.log("  POST /api/device/test-webhook  - Test webhook");
-  console.log("  POST /api/device/cleanup       - Cleanup device session");
-  console.log("  GET  /api/device/size          - Get device session size");
-  console.log("  POST /api/cleanup-all          - Global cleanup all sessions");
-  console.log("  GET  /api/sessions/size        - Get total sessions size");
-  console.log("  GET  /api/status               - Global status");
-  console.log("  GET  /api/health               - Health check");
-  console.log("🧹 Scheduled cleanup: Every 6 hours");
+  console.log("📋 New API Endpoints:");
+  console.log("  GET  /api/devices           - List all devices");
+  console.log("  POST /api/devices           - Create new device");
+  console.log("  GET  /api/device            - Get device info (requires device_id in body)");
+  console.log("  PUT  /api/device            - Update device config (requires device_id in body)");
+  console.log("  DELETE /api/device          - Delete device (requires device_id in body)");
+  console.log("  GET  /api/device/qr         - Get QR code (requires device_id in body)");
+  console.log("  POST /api/device/send-message - Send message (requires device_id in body)");
+  console.log("  POST /api/device/send-image - Send image with caption (requires device_id in body)");
+  console.log("  POST /api/device/logout     - Logout device (requires device_id in body)");
+  console.log("  POST /api/device/test-webhook - Test webhook (requires device_id in body)");
+  console.log("  GET  /api/status            - Global status");
+  console.log("  GET  /api/health            - Health check");
   console.log("📁 Config directory: " + path.resolve(CONFIG_DIR));
   console.log("📁 Sessions directory: " + path.resolve(SESSIONS_DIR));
   console.log(`📱 Loaded ${clients.size} existing devices`);
-  console.log(`🔑 Global API Key: ${GLOBAL_API_KEY} (CHANGE THIS IN PRODUCTION!)`);
-  
-  // Show initial session sizes
-  setTimeout(async () => {
-    try {
-      const totalSize = await SessionCleaner.getDirectorySize(SESSIONS_DIR);
-      console.log(`💾 Total sessions size: ${SessionCleaner.formatBytes(totalSize)}`);
-    } catch (error) {
-      console.error("Error getting initial session size:", error.message);
-    }
-  }, 2000);
+  console.log(`🔑 Global API Key (for testing): ${GLOBAL_API_KEY} (CHANGE THIS IN PRODUCTION!)`);
 });

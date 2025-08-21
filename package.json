@@ -10,12 +10,13 @@
     "setup": "npm install && mkdir -p configs sessions"
   },
   "dependencies": {
-    "whatsapp-web.js": "^1.23.0",
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "qrcode-terminal": "^0.12.0",
     "axios": "^1.6.0",
-    "uuid": "^9.0.1"
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-cron": "^4.2.1",
+    "qrcode-terminal": "^0.12.0",
+    "uuid": "^9.0.1",
+    "whatsapp-web.js": "^1.23.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
