@@ -11,7 +11,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: '*', // Ini juga izinkan semua origin
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -20,6 +20,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Storage untuk multiple clients
 const clients = new Map();
 const clientConfigs = new Map();
+const clientStatuses = new Map();
 
 // File untuk menyimpan konfigurasi global
 const CONFIG_DIR = "./configs";
@@ -33,8 +34,8 @@ if (!fs.existsSync(SESSIONS_DIR)) {
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
-// Global API Key (gunakan environment variable di produksi)
-const GLOBAL_API_KEY = process.env.API_KEY || "YOUR_SUPER_SECRET_API_KEY"; // GANTI INI DENGAN KEY YANG LEBIH KUAT DAN GUNAKAN ENV VAR!
+// Global API Key
+const GLOBAL_API_KEY = process.env.API_KEY || "YOUR_SUPER_SECRET_API_KEY";
 
 // Class untuk mengelola WhatsApp Client
 class WhatsAppManager {
@@ -60,7 +61,7 @@ class WhatsAppManager {
       if (fs.existsSync(this.configFile)) {
         const savedConfig = JSON.parse(fs.readFileSync(this.configFile, "utf8"));
         this.config = { ...this.config, ...savedConfig };
-        console.log(`📁 [${this.deviceId}] Konfigurasi dimuat dari file`);
+        console.log(`📂 [${this.deviceId}] Konfigurasi dimuat dari file`);
       } else {
         this.saveConfig();
       }
@@ -124,41 +125,39 @@ class WhatsAppManager {
     }
   }
 
- async sendImage(chatId, image, caption = '') {
-  if (!this.isClientReady || !this.client) {
-    throw new Error("Client tidak siap");
-  }
-
-  try {
-    const formattedChatId = chatId.includes("@c.us") ? chatId : `${chatId}@c.us`;
-    let media;
-
-    // Cek apakah image adalah URL atau base64
-    if (image.startsWith('http://') || image.startsWith('https://')) {
-      const { buffer, mimeType } = await downloadImage(image);
-      media = new MessageMedia(mimeType, buffer.toString('base64'), `image-${Date.now()}`);
-    } else if (image.startsWith('data:image')) {
-      // Gambar dalam format base64
-      const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-      if (!matches || matches.length !== 3) {
-        throw new Error('Format base64 tidak valid');
-      }
-      const mimeType = matches[1];
-      const base64Data = matches[2];
-      media = new MessageMedia(mimeType, base64Data, `image-${Date.now()}`);
-    } else {
-      throw new Error('Format gambar tidak valid. Gunakan URL atau base64.');
+  async sendImage(chatId, image, caption = '') {
+    if (!this.isClientReady || !this.client) {
+      throw new Error("Client tidak siap");
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const result = await this.client.sendMessage(formattedChatId, media, { caption });
-    console.log(`✅ [${this.deviceId}] Gambar berhasil dikirim ke:`, formattedChatId);
-    return result;
-  } catch (error) {
-    console.error(`❌ [${this.deviceId}] Gagal mengirim gambar:`, error.message);
-    throw error;
+    try {
+      const formattedChatId = chatId.includes("@c.us") ? chatId : `${chatId}@c.us`;
+      let media;
+
+      if (image.startsWith('http://') || image.startsWith('https://')) {
+        const { buffer, mimeType } = await downloadImage(image);
+        media = new MessageMedia(mimeType, buffer.toString('base64'), `image-${Date.now()}`);
+      } else if (image.startsWith('data:image')) {
+        const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) {
+          throw new Error('Format base64 tidak valid');
+        }
+        const mimeType = matches[1];
+        const base64Data = matches[2];
+        media = new MessageMedia(mimeType, base64Data, `image-${Date.now()}`);
+      } else {
+        throw new Error('Format gambar tidak valid. Gunakan URL atau base64.');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const result = await this.client.sendMessage(formattedChatId, media, { caption });
+      console.log(`✅ [${this.deviceId}] Gambar berhasil dikirim ke:`, formattedChatId);
+      return result;
+    } catch (error) {
+      console.error(`❌ [${this.deviceId}] Gagal mengirim gambar:`, error.message);
+      throw error;
+    }
   }
-}
 
   initializeClient() {
     this.client = new Client({
@@ -263,11 +262,26 @@ class WhatsAppManager {
 
       console.log(`📨 [${this.deviceId}] Pesan diterima:`, msg.from, "=>", msg.body);
 
-      // Kirim ke webhook
+      // Kirim ke webhook dengan error handling yang lebih baik
       if (this.config.webhook_url) {
         try {
-          const contact = await msg.getContact();
-          const chat = await msg.getChat();
+          // Gunakan try-catch untuk setiap operasi yang mungkin gagal
+          let contactName = "Unknown";
+          let profilePicture = "";
+          
+          try {
+            const contact = await msg.getContact();
+            contactName = contact.pushname || contact.name || "Unknown";
+          } catch (err) {
+            console.warn(`⚠️ [${this.deviceId}] Gagal mengambil contact info:`, err.message);
+          }
+
+          try {
+            const contact = await msg.getContact();
+            profilePicture = await contact.getProfilePicUrl();
+          } catch (err) {
+            console.warn(`⚠️ [${this.deviceId}] Gagal mengambil profile picture:`, err.message);
+          }
 
           const hasMedia = msg.hasMedia;
           let mediaMime = "";
@@ -293,8 +307,8 @@ class WhatsAppManager {
             data: {
               chat_id: chat_id,
               message_id: msg.id._serialized,
-              name: contact.pushname || contact.name || "Unknown",
-              profile_picture: await contact.getProfilePicUrl().catch(() => ""),
+              name: contactName,
+              profile_picture: profilePicture,
               timestamp: msg.timestamp,
               message_body: msg.body,
               message_ack: msg.ack || "PENDING",
@@ -329,7 +343,15 @@ class WhatsAppManager {
     this.client.on("message_create", async (msg) => {
       if (msg.fromMe && this.config.webhook_url) {
         try {
-          const contact = await msg.getContact();
+          let contactName = "Unknown";
+          
+          try {
+            const contact = await msg.getContact();
+            contactName = contact.pushname || contact.name || "Unknown";
+          } catch (err) {
+            console.warn(`⚠️ [${this.deviceId}] Gagal mengambil contact info (outgoing):`, err.message);
+          }
+
           const chat_id = msg.to.replace("@c.us", "");
 
           const webhookData = {
@@ -337,7 +359,7 @@ class WhatsAppManager {
             data: {
               chat_id: chat_id,
               message_id: msg.id._serialized,
-              name: contact.pushname || contact.name || "Unknown",
+              name: contactName,
               timestamp: msg.timestamp,
               message_body: msg.body,
               message_ack: msg.ack || "PENDING",
@@ -378,7 +400,6 @@ class WhatsAppManager {
           break;
 
         default:
-          // Handle other commands if needed
           break;
       }
     } catch (error) {
@@ -437,11 +458,10 @@ function getAllClients() {
   return result;
 }
 
-// Load existing devices saat startup
 function loadExistingDevices() {
   try {
     const configFiles = fs.readdirSync(CONFIG_DIR).filter(file => file.endsWith('.json'));
-    console.log(`📁 Ditemukan ${configFiles.length} device yang tersimpan`);
+    console.log(`📂 Ditemukan ${configFiles.length} device yang tersimpan`);
 
     configFiles.forEach(file => {
       const deviceId = file.replace('.json', '');
@@ -462,7 +482,6 @@ function loadExistingDevices() {
   }
 }
 
-// Helper function untuk mengunduh gambar dari URL
 async function downloadImage(url) {
   try {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
@@ -474,7 +493,6 @@ async function downloadImage(url) {
   }
 }
 
-// Middleware untuk validasi device_id dan apikey
 const validateRequest = (req, res, next) => {
   const { device_id, apikey } = req.body;
 
@@ -499,16 +517,11 @@ const validateRequest = (req, res, next) => {
     });
   }
 
-  // Set deviceId dari body ke params untuk konsistensi di handler route
-  // Ini penting karena handler route masih mungkin mengakses req.params.deviceId
   req.params.deviceId = device_id;
-
-  next(); // Lanjutkan ke handler route
+  next();
 };
 
 // API Routes
-
-// Create new device (no device_id in body required, it's generated) - ONLY check apikey
 app.post("/api/devices", (req, res) => {
   const { device_name, webhook_url, auto_reply, apikey } = req.body;
 
@@ -545,11 +558,7 @@ app.post("/api/devices", (req, res) => {
   }
 });
 
-// Get all devices (No specific device_id required, but an apikey might be desired for security)
 app.get("/api/devices", (req, res) => {
-  // You might want to add an API key check here too, but it's not tied to a specific device.
-  // For simplicity, I'm omitting a body-based API key check for GET /api/devices
-  // If you want it, you'd add a separate middleware for global API key validation.
   res.json({
     status: "success",
     devices: getAllClients(),
@@ -557,9 +566,8 @@ app.get("/api/devices", (req, res) => {
   });
 });
 
-// Routes now solely rely on device_id from body
 app.get("/api/device", validateRequest, (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -576,7 +584,7 @@ app.get("/api/device", validateRequest, (req, res) => {
 });
 
 app.put("/api/device", validateRequest, (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -610,7 +618,7 @@ app.put("/api/device", validateRequest, (req, res) => {
 });
 
 app.delete("/api/device", validateRequest, async (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -624,7 +632,6 @@ app.delete("/api/device", validateRequest, async (req, res) => {
     await manager.logout();
     clients.delete(deviceId);
 
-    // Hapus config file
     if (fs.existsSync(manager.configFile)) {
       fs.unlinkSync(manager.configFile);
     }
@@ -643,7 +650,7 @@ app.delete("/api/device", validateRequest, async (req, res) => {
 });
 
 app.post("/api/device/qr", validateRequest, (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -668,7 +675,7 @@ app.post("/api/device/qr", validateRequest, (req, res) => {
 });
 
 app.post("/api/device/send-message", validateRequest, async (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const { number, message } = req.body;
   const manager = getClient(deviceId);
 
@@ -711,8 +718,8 @@ app.post("/api/device/send-message", validateRequest, async (req, res) => {
 });
 
 app.post("/api/device/send-image", validateRequest, async (req, res) => {
-  const { deviceId } = req.params; // deviceId diset oleh validateRequest dari req.body.device_id
-  const { number, image, caption, apikey } = req.body;
+  const { deviceId } = req.params;
+  const { number, image, caption } = req.body;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -754,7 +761,7 @@ app.post("/api/device/send-image", validateRequest, async (req, res) => {
 });
 
 app.post("/api/device/logout", validateRequest, async (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -780,7 +787,7 @@ app.post("/api/device/logout", validateRequest, async (req, res) => {
 });
 
 app.post("/api/device/test-webhook", validateRequest, async (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -833,9 +840,6 @@ app.post("/api/device/test-webhook", validateRequest, async (req, res) => {
   }
 });
 
-// Global status and Health check - These typically don't require device_id or apikey in the body,
-// but you might enforce a global API key for them if desired.
-// For now, they remain open for ease of monitoring.
 app.get("/api/status", (req, res) => {
   const devices = getAllClients();
   const readyDevices = devices.filter(d => d.is_ready).length;
@@ -858,10 +862,8 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Backward compatibility endpoints (untuk compatibility dengan kode lama)
-// These will also now require device_id and apikey in the body for consistency.
 app.get("/get_qr", validateRequest, (req, res) => {
-  const { deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -886,7 +888,8 @@ app.get("/get_qr", validateRequest, (req, res) => {
 });
 
 app.post("/send-message", validateRequest, async (req, res) => {
-  const { number, message, deviceId } = req.params; // deviceId is set from req.body.device_id by validateRequest
+  const { number, message } = req.body;
+  const { deviceId } = req.params;
   const manager = getClient(deviceId);
 
   if (!manager) {
@@ -917,7 +920,6 @@ app.post("/send-message", validateRequest, async (req, res) => {
   }
 });
 
-// Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
   res.status(500).json({
@@ -927,7 +929,6 @@ app.use((error, req, res, next) => {
   });
 });
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     status: "error",
@@ -938,20 +939,17 @@ app.use((req, res) => {
       "GET /api/device - Get device info (using device_id in body)",
       "PUT /api/device - Update device config (using device_id in body)",
       "DELETE /api/device - Delete device (using device_id in body)",
-      "GET /api/device/qr - Get QR code (using device_id in body)",
+      "POST /api/device/qr - Get QR code (using device_id in body)",
       "POST /api/device/send-message - Send message (using device_id in body)",
+      "POST /api/device/send-image - Send image (using device_id in body)",
       "POST /api/device/logout - Logout device (using device_id in body)",
       "POST /api/device/test-webhook - Test webhook (using device_id in body)",
       "GET /api/status - Global status",
-      "GET /api/health - Health check",
-      "GET /get_qr - Backward compatibility for QR (using device_id in body)",
-      "POST /send-message - Backward compatibility for send message (using device_id in body)",
-      "POST /send-image - Backward compatibility for send image (using device_id in body)"
+      "GET /api/health - Health check"
     ]
   });
 });
 
-// Graceful shutdown
 process.on("SIGINT", async () => {
   console.log("\n🛑 Shutting down...");
   try {
@@ -967,10 +965,8 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
-// Start server
 const PORT = process.env.PORT || 4001;
 
-// Load existing devices before starting
 loadExistingDevices();
 
 app.listen(PORT, () => {
@@ -981,15 +977,15 @@ app.listen(PORT, () => {
   console.log("  GET  /api/device            - Get device info (requires device_id in body)");
   console.log("  PUT  /api/device            - Update device config (requires device_id in body)");
   console.log("  DELETE /api/device          - Delete device (requires device_id in body)");
-  console.log("  GET  /api/device/qr         - Get QR code (requires device_id in body)");
+  console.log("  POST /api/device/qr         - Get QR code (requires device_id in body)");
   console.log("  POST /api/device/send-message - Send message (requires device_id in body)");
   console.log("  POST /api/device/send-image - Send image with caption (requires device_id in body)");
   console.log("  POST /api/device/logout     - Logout device (requires device_id in body)");
   console.log("  POST /api/device/test-webhook - Test webhook (requires device_id in body)");
   console.log("  GET  /api/status            - Global status");
   console.log("  GET  /api/health            - Health check");
-  console.log("📁 Config directory: " + path.resolve(CONFIG_DIR));
-  console.log("📁 Sessions directory: " + path.resolve(SESSIONS_DIR));
+  console.log("📂 Config directory: " + path.resolve(CONFIG_DIR));
+  console.log("📂 Sessions directory: " + path.resolve(SESSIONS_DIR));
   console.log(`📱 Loaded ${clients.size} existing devices`);
   console.log(`🔑 Global API Key (for testing): ${GLOBAL_API_KEY} (CHANGE THIS IN PRODUCTION!)`);
 });
