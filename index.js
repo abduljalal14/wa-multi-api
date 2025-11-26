@@ -265,22 +265,35 @@ class WhatsAppManager {
       // Kirim ke webhook dengan error handling yang lebih baik
       if (this.config.webhook_url) {
         try {
-          // Gunakan try-catch untuk setiap operasi yang mungkin gagal
+          // Ambil data langsung dari message object untuk menghindari bug getContact()
           let contactName = "Unknown";
           let profilePicture = "";
           
-          try {
-            const contact = await msg.getContact();
-            contactName = contact.pushname || contact.name || "Unknown";
-          } catch (err) {
-            console.warn(`⚠️ [${this.deviceId}] Gagal mengambil contact info:`, err.message);
+          // Coba ambil nama dari msg._data
+          if (msg._data && msg._data.notifyName) {
+            contactName = msg._data.notifyName;
+          } else if (msg._data && msg._data.from) {
+            contactName = msg._data.from.split('@')[0];
           }
-
+          
+          // Coba ambil profile picture dengan fallback
           try {
             const contact = await msg.getContact();
-            profilePicture = await contact.getProfilePicUrl();
+            if (contact) {
+              // Update nama jika ada dari contact
+              if (contact.pushname) contactName = contact.pushname;
+              else if (contact.name) contactName = contact.name;
+              
+              // Coba ambil profile picture
+              try {
+                profilePicture = await contact.getProfilePicUrl();
+              } catch (picErr) {
+                // Ignore profile picture error
+              }
+            }
           } catch (err) {
-            console.warn(`⚠️ [${this.deviceId}] Gagal mengambil profile picture:`, err.message);
+            // Jika getContact gagal, lanjutkan dengan data yang sudah ada
+            console.warn(`⚠️ [${this.deviceId}] Menggunakan data fallback untuk contact`);
           }
 
           const hasMedia = msg.hasMedia;
@@ -343,13 +356,21 @@ class WhatsAppManager {
     this.client.on("message_create", async (msg) => {
       if (msg.fromMe && this.config.webhook_url) {
         try {
+          // Ambil nama langsung dari msg._data untuk outgoing message
           let contactName = "Unknown";
           
+          if (msg._data && msg._data.to) {
+            contactName = msg._data.to.split('@')[0];
+          }
+          
+          // Coba ambil dari contact sebagai fallback
           try {
             const contact = await msg.getContact();
-            contactName = contact.pushname || contact.name || "Unknown";
+            if (contact && (contact.pushname || contact.name)) {
+              contactName = contact.pushname || contact.name;
+            }
           } catch (err) {
-            console.warn(`⚠️ [${this.deviceId}] Gagal mengambil contact info (outgoing):`, err.message);
+            // Gunakan fallback yang sudah ada
           }
 
           const chat_id = msg.to.replace("@c.us", "");
