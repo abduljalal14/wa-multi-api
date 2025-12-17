@@ -159,6 +159,47 @@ class WhatsAppManager {
     }
   }
 
+  async sendDocument(chatId, document, filename = '', caption = '') {
+    if (!this.isClientReady || !this.client) {
+      throw new Error("Client tidak siap");
+    }
+
+    try {
+      const formattedChatId = chatId.includes("@c.us") ? chatId : `${chatId}@c.us`;
+      let media;
+
+      if (document.startsWith('http://') || document.startsWith('https://')) {
+        // Download dari URL
+        const { buffer, mimeType } = await downloadFile(document);
+        const docFilename = filename || `document-${Date.now()}.${getExtensionFromMime(mimeType)}`;
+        media = new MessageMedia(mimeType, buffer.toString('base64'), docFilename);
+      } else if (document.startsWith('data:')) {
+        // Base64 format
+        const matches = document.match(/^data:([A-Za-z0-9-+\/]+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) {
+          throw new Error('Format base64 tidak valid');
+        }
+        const mimeType = matches[1];
+        const base64Data = matches[2];
+        const docFilename = filename || `document-${Date.now()}.${getExtensionFromMime(mimeType)}`;
+        media = new MessageMedia(mimeType, base64Data, docFilename);
+      } else {
+        throw new Error('Format dokumen tidak valid. Gunakan URL atau base64.');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const result = await this.client.sendMessage(formattedChatId, media, { 
+        caption,
+        sendMediaAsDocument: true 
+      });
+      console.log(`✅ [${this.deviceId}] Dokumen berhasil dikirim ke:`, formattedChatId);
+      return result;
+    } catch (error) {
+      console.error(`❌ [${this.deviceId}] Gagal mengirim dokumen:`, error.message);
+      throw error;
+    }
+  }
+
   initializeClient() {
     this.client = new Client({
       authStrategy: new LocalAuth({
@@ -514,6 +555,40 @@ async function downloadImage(url) {
   }
 }
 
+async function downloadFile(url) {
+  try {
+    const response = await axios.get(url, { 
+      responseType: 'arraybuffer',
+      maxContentLength: 50 * 1024 * 1024, // Max 50MB
+      timeout: 60000 // 60 detik timeout
+    });
+    const buffer = Buffer.from(response.data, 'binary');
+    const mimeType = response.headers['content-type'] || 'application/octet-stream';
+    return { buffer, mimeType };
+  } catch (error) {
+    throw new Error(`Gagal mengunduh file: ${error.message}`);
+  }
+}
+
+function getExtensionFromMime(mimeType) {
+  const mimeMap = {
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'application/zip': 'zip',
+    'application/x-rar-compressed': 'rar',
+    'text/plain': 'txt',
+    'text/csv': 'csv',
+    'application/json': 'json',
+    'application/xml': 'xml',
+  };
+  return mimeMap[mimeType] || 'bin';
+}
+
 const validateRequest = (req, res, next) => {
   const { device_id, apikey } = req.body;
 
@@ -781,6 +856,50 @@ app.post("/api/device/send-image", validateRequest, async (req, res) => {
   }
 });
 
+app.post("/api/device/send-document", validateRequest, async (req, res) => {
+  const { deviceId } = req.params;
+  const { number, document, filename, caption } = req.body;
+  const manager = getClient(deviceId);
+
+  if (!manager) {
+    return res.status(404).json({
+      status: "error",
+      message: "Device tidak ditemukan"
+    });
+  }
+
+  if (!manager.isClientReady) {
+    return res.status(503).json({
+      status: "error",
+      message: "Device belum siap. Tunggu hingga status ready."
+    });
+  }
+
+  if (!number || !document) {
+    return res.status(400).json({
+      status: "error",
+      message: "Parameter 'number' dan 'document' wajib diisi"
+    });
+  }
+
+  try {
+    await manager.sendDocument(number, document, filename || '', caption || '');
+    res.json({
+      status: "success",
+      message: "Dokumen berhasil dikirim",
+      to: number.includes("@c.us") ? number : `${number}@c.us`,
+      device_id: deviceId,
+      filename: filename || 'document'
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Gagal mengirim dokumen",
+      error: error.message
+    });
+  }
+});
+
 app.post("/api/device/logout", validateRequest, async (req, res) => {
   const { deviceId } = req.params;
   const manager = getClient(deviceId);
@@ -963,6 +1082,7 @@ app.use((req, res) => {
       "POST /api/device/qr - Get QR code (using device_id in body)",
       "POST /api/device/send-message - Send message (using device_id in body)",
       "POST /api/device/send-image - Send image (using device_id in body)",
+      "POST /api/device/send-document - Send document (using device_id in body)",
       "POST /api/device/logout - Logout device (using device_id in body)",
       "POST /api/device/test-webhook - Test webhook (using device_id in body)",
       "GET /api/status - Global status",
@@ -1001,6 +1121,7 @@ app.listen(PORT, () => {
   console.log("  POST /api/device/qr         - Get QR code (requires device_id in body)");
   console.log("  POST /api/device/send-message - Send message (requires device_id in body)");
   console.log("  POST /api/device/send-image - Send image with caption (requires device_id in body)");
+  console.log("  POST /api/device/send-document - Send document with filename and caption (requires device_id in body)");
   console.log("  POST /api/device/logout     - Logout device (requires device_id in body)");
   console.log("  POST /api/device/test-webhook - Test webhook (requires device_id in body)");
   console.log("  GET  /api/status            - Global status");
