@@ -1,203 +1,395 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-  <h1>WhatsApp Multi-Device Bot API</h1>
-  <p>Selamat datang di dokumentasi untuk WhatsApp Multi-Device Bot API! Aplikasi ini memungkinkan Anda untuk mengelola beberapa instance WhatsApp, mengirim pesan teks dan gambar, serta mengatur webhook untuk notifikasi. Berikut adalah panduan lengkap untuk menginstal dan menggunakan aplikasi ini.</p>
+# WhatsApp Multi-Device Bot API
 
-  <h2>Prasyarat</h2>
-  <ul>
-    <li><strong>Node.js</strong>: Versi 16 atau lebih tinggi. Unduh dari <a href="https://nodejs.org">nodejs.org</a>.</li>
-    <li><strong>NPM</strong>: Biasanya sudah terinstal bersama Node.js.</li>
-    <li><strong>Git</strong>: Untuk mengkloning repositori (opsional).</li>
-    <li><strong>WhatsApp</strong>: Akun WhatsApp aktif untuk autentikasi via QR code.</li>
-    <li><strong>Server/Hosting</strong>: Pastikan server Anda memiliki akses internet untuk mengunduh dependensi dan mengirim pesan.</li>
-  </ul>
+Modular, scalable, and maintainable WhatsApp bot API with multi-device support.
 
-  <h2>Instalasi</h2>
-  <p>Ikuti langkah-langkah berikut untuk menginstal aplikasi:</p>
-  <ol>
-    <li><strong>Kloning Repositori (Opsional)</strong>
-      <pre><code>git clone https://github.com/abduljalal14/wa-multi-api;
-cd wa-multi-api</code></pre>
-      Atau, unduh kode sumber secara manual dan ekstrak ke direktori pilihan Anda.
-    </li>
-    <li><strong>Instal Dependensi</strong>
-      <pre><code>npm install</code></pre>
-      Ini akan menginstal semua dependensi yang diperlukan, termasuk <code>whatsapp-web.js</code>, <code>express</code>, <code>axios</code>, <code>qrcode-terminal</code>, dan lainnya.
-    </li>
-    <li><strong>Konfigurasi API Key</strong>
-      <p>Edit file <code>index.js</code> atau setel variabel lingkungan untuk <code>API_KEY</code>:</p>
-      <pre><code>export API_KEY="YOUR_SUPER_SECRET_API_KEY"</code></pre>
-      <div class="note">
-        <strong>Catatan:</strong> Ganti <code>YOUR_SUPER_SECRET_API_KEY</code> dengan kunci yang kuat di lingkungan produksi. Jangan gunakan kunci default!
-      </div>
-    </li>
-    <li><strong>Jalankan Aplikasi</strong>
-      <pre><code>node index.js</code></pre>
-      Aplikasi akan berjalan pada port default <code>4001</code> (atau port lain yang ditentukan di variabel lingkungan <code>PORT</code>).
-    </li>
-  </ol>
+## 📁 Project Structure
 
-  <h2>Autentikasi WhatsApp</h2>
-  <p>Untuk menggunakan bot, Anda perlu mengautentikasi setiap perangkat dengan akun WhatsApp:</p>
-  <ol>
-    <li><strong>Buat Perangkat Baru</strong>
-      <p>Kirim permintaan POST ke endpoint <code>/api/devices</code> untuk membuat perangkat baru:</p>
-      <pre><code>curl -X POST http://localhost:4001/api/devices \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apikey": "YOUR_SUPER_SECRET_API_KEY",
-    "device_name": "MyBot",
-    "webhook_url": "https://your-webhook-url.com",
-    "auto_reply": false
-  }'</code></pre>
-      Ini akan mengembalikan <code>device_id</code> unik untuk perangkat.
-    </li>
-    <li><strong>Dapatkan QR Code</strong>
-      <p>Gunakan endpoint <code>/api/device/qr</code> untuk mendapatkan QR code:</p>
-      <pre><code>curl -X POST http://localhost:4001/api/device/qr \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "&lt;your-device-id&gt;",
-    "apikey": "YOUR_SUPER_SECRET_API_KEY"
-  }'</code></pre>
-      <p>QR code akan ditampilkan di respons atau di konsol server. Buka WhatsApp di ponsel Anda, masuk ke <strong>Pengaturan > Perangkat Tertaut > Tautkan Perangkat</strong>, dan pindai QR code.</p>
-    </li>
-    <li><strong>Verifikasi Status Perangkat</strong>
-      <p>Periksa status perangkat dengan endpoint <code>/api/device</code>:</p>
-      <pre><code>curl -X POST http://localhost:4001/api/device \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "&lt;your-device-id&gt;",
-    "apikey": "YOUR_SUPER_SECRET_API_KEY"
-  }'</code></pre>
-      Pastikan <code>is_ready: true</code> sebelum mengirim pesan.
-    </li>
-  </ol>
+```
+whatsapp-bot/
+├── src/
+│   ├── config/
+│   │   ├── constants.js          # Global constants & configurations
+│   │   └── environment.js        # Environment variables loader
+│   ├── core/
+│   │   └── WhatsAppManager.js    # WhatsApp client manager
+│   ├── middleware/
+│   │   └── validation.js         # Request validation middleware
+│   ├── routes/
+│   │   ├── index.js              # Route aggregator
+│   │   ├── device.routes.js      # Device management routes
+│   │   ├── message.routes.js     # Message sending routes
+│   │   └── status.routes.js      # Status & health routes
+│   ├── services/
+│   │   ├── device.service.js     # Device business logic
+│   │   ├── message.service.js    # Message handling logic
+│   │   └── webhook.service.js    # Webhook management
+│   ├── utils/
+│   │   ├── file.utils.js         # File operations
+│   │   ├── download.utils.js     # Download helpers
+│   │   └── logger.utils.js       # Logging utilities
+│   └── app.js                    # Express app setup
+├── configs/                       # Device configs (auto-generated)
+├── sessions/                      # WhatsApp sessions (auto-generated)
+├── index.js                       # Entry point
+├── package.json
+├── .env.example
+├── .gitignore
+└── README.md
+```
 
-  <h2>Penggunaan API</h2>
-  <p>Berikut adalah daftar endpoint utama yang tersedia:</p>
-  <table class="endpoint-table">
-    <tr>
-      <th>Metode</th>
-      <th>Endpoint</th>
-      <th>Deskripsi</th>
-    </tr>
-    <tr>
-      <td>GET</td>
-      <td>/api/devices</td>
-      <td>Menampilkan daftar semua perangkat</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/devices</td>
-      <td>Membuat perangkat baru</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/device</td>
-      <td>Mendapatkan informasi perangkat (membutuhkan <code>device_id</code>)</td>
-    </tr>
-    <tr>
-      <td>PUT</td>
-      <td>/api/device</td>
-      <td>Mengupdate konfigurasi perangkat (membutuhkan <code>device_id</code>)</td>
-    </tr>
-    <tr>
-      <td>DELETE</td>
-      <td>/api/device</td>
-      <td>Menghapus perangkat (membutuhkan <code>device_id</code>)</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/device/qr</td>
-      <td>Mendapatkan QR code untuk autentikasi (membutuhkan <code>device_id</code>)</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/device/send-message</td>
-      <td>Mengirim pesan teks (membutuhkan <code>device_id</code>, <code>number</code>, <code>message</code>)</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/device/send-image</td>
-      <td>Mengirim gambar dengan caption (membutuhkan <code>device_id</code>, <code>number</code>, <code>image</code>, <code>caption</code>)</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/device/logout</td>
-      <td>Logout perangkat (membutuhkan <code>device_id</code>)</td>
-    </tr>
-    <tr>
-      <td>POST</td>
-      <td>/api/device/test-webhook</td>
-      <td>Menguji webhook (membutuhkan <code>device_id</code>)</td>
-    </tr>
-    <tr>
-      <td>GET</td>
-      <td>/api/status</td>
-      <td>Menampilkan status global semua perangkat</td>
-    </tr>
-    <tr>
-      <td>GET</td>
-      <td>/api/health</td>
-      <td>Menampilkan status kesehatan server</td>
-    </tr>
-  </table>
+## 🚀 Quick Start
 
-  <h3>Contoh Pengiriman Pesan Teks</h3>
-  <pre><code>curl -X POST http://localhost:4001/api/device/send-message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "&lt;your-device-id&gt;",
-    "apikey": "YOUR_SUPER_SECRET_API_KEY",
-    "number": "6281234567890",
-    "message": "Halo, ini pesan dari bot!"
-  }'</code></pre>
+### 1. Installation
 
-  <h3>Contoh Pengiriman Gambar</h3>
-  <p>Mengirim gambar dari URL:</p>
-  <pre><code>curl -X POST http://localhost:4001/api/device/send-image \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "&lt;your-device-id&gt;",
-    "apikey": "YOUR_SUPER_SECRET_API_KEY",
-    "number": "6281234567890",
-    "image": "https://example.com/image.jpg",
-    "caption": "Ini adalah gambar contoh"
-  }'</code></pre>
-  <p>Mengirim gambar dalam format base64:</p>
-  <pre><code>curl -X POST http://localhost:4001/api/device/send-image \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "&lt;your-device-id&gt;",
-    "apikey": "YOUR_SUPER_SECRET_API_KEY",
-    "number": "6281234567890",
-    "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQE... (base64 string)",
-    "caption": "Ini adalah gambar contoh"
-  }'</code></pre>
+```bash
+# Clone or create project directory
+mkdir whatsapp-bot && cd whatsapp-bot
 
-  <h2>Catatan Penting</h2>
-  <div class="note">
-    <ul>
-      <li><strong>Keamanan</strong>: Simpan <code>API_KEY</code> di variabel lingkungan dan jangan bagikan secara publik.</li>
-      <li><strong>Batasan WhatsApp</strong>: Pastikan gambar tidak melebihi batas ukuran (~16MB) dan nomor tujuan valid.</li>
-      <li><strong>Webhook</strong>: Jika menggunakan webhook, pastikan URL webhook Anda dapat menerima POST request dengan format JSON.</li>
-      <li><strong>Penyimpanan Sesi</strong>: Sesi WhatsApp disimpan di direktori <code>sessions</code>. Jangan hapus direktori ini kecuali Anda ingin logout.</li>
-    </ul>
-  </div>
+# Install dependencies
+npm install
+```
 
-  <h2>Pemecahan Masalah</h2>
-  <ul>
-    <li><strong>QR Code Tidak Muncul</strong>: Pastikan perangkat belum terautentikasi. Gunakan endpoint <code>/api/device/logout</code> untuk mereset sesi.</li>
-    <li><strong>Gagal Mengirim Pesan/Gambar</strong>: Periksa status perangkat (<code>is_ready: true</code>) dan pastikan nomor tujuan benar.</li>
-    <li><strong>Error "MessageMedia is not a constructor"</strong>: Pastikan Anda menggunakan versi terbaru <code>whatsapp-web.js</code> (<code>npm install whatsapp-web.js@latest</code>).</li>
-    <li><strong>Log Server</strong>: Periksa log di konsol server untuk detail error (misalnya, <code>console.error</code>).</li>
-  </ul>
+### 2. Configuration
 
-</body>
-</html>
+Create `.env` file from example:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set your API key:
+
+```env
+API_KEY=your_secret_api_key_here
+PORT=4001
+```
+
+### 3. Run
+
+```bash
+# Production
+npm start
+
+# Development (with auto-reload)
+npm run dev
+```
+
+## 📡 API Endpoints
+
+### Device Management
+
+#### Create New Device
+```http
+POST /api/devices
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_name": "My Device",
+  "webhook_url": "https://your-webhook.com/endpoint",
+  "auto_reply": false
+}
+```
+
+#### List All Devices
+```http
+GET /api/devices
+```
+
+#### Get Device Info
+```http
+GET /api/device
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid"
+}
+```
+
+#### Update Device Config
+```http
+PUT /api/device
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid",
+  "device_name": "Updated Name",
+  "webhook_url": "https://new-webhook.com",
+  "auto_reply": true
+}
+```
+
+#### Delete Device
+```http
+DELETE /api/device
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid"
+}
+```
+
+#### Get QR Code
+```http
+POST /api/device/qr
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid"
+}
+```
+
+#### Logout Device
+```http
+POST /api/device/logout
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid"
+}
+```
+
+### Messaging
+
+#### Send Text Message
+```http
+POST /api/device/send-message
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid",
+  "number": "6281234567890",
+  "message": "Hello World!"
+}
+```
+
+#### Send Image
+```http
+POST /api/device/send-image
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid",
+  "number": "6281234567890",
+  "image": "https://example.com/image.jpg",
+  "caption": "Check this out!"
+}
+```
+
+Or with base64:
+```json
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid",
+  "number": "6281234567890",
+  "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+  "caption": "Base64 image"
+}
+```
+
+#### Send Document
+```http
+POST /api/device/send-document
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid",
+  "number": "6281234567890",
+  "document": "https://example.com/document.pdf",
+  "filename": "report.pdf",
+  "caption": "Here's the report"
+}
+```
+
+### Status & Health
+
+#### Global Status
+```http
+GET /api/status
+```
+
+#### Health Check
+```http
+GET /api/health
+```
+
+#### Test Webhook
+```http
+POST /api/device/test-webhook
+Content-Type: application/json
+
+{
+  "apikey": "your_api_key",
+  "device_id": "device-uuid"
+}
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `API_KEY` | Global API key for authentication | `YOUR_SUPER_SECRET_API_KEY` |
+| `PORT` | Server port | `4001` |
+| `NODE_ENV` | Environment mode | `development` |
+| `CONFIG_DIR` | Device configs directory | `./configs` |
+| `SESSIONS_DIR` | WhatsApp sessions directory | `./sessions` |
+| `WEBHOOK_TIMEOUT` | Webhook request timeout (ms) | `30000` |
+| `MAX_FILE_SIZE` | Max file upload size (bytes) | `52428800` (50MB) |
+| `DOWNLOAD_TIMEOUT` | Download timeout (ms) | `60000` |
+
+## 🎯 Features
+
+### ✅ Multi-Device Support
+- Manage multiple WhatsApp devices simultaneously
+- Each device has independent session and configuration
+- Auto-load existing devices on startup
+
+### ✅ Webhook Integration
+- Send incoming messages to your webhook
+- Send outgoing messages to your webhook
+- Configurable per device
+- Includes contact info and metadata
+
+### ✅ Rich Messaging
+- Text messages
+- Images (URL or base64)
+- Documents (URL or base64)
+- Captions and filenames support
+
+### ✅ Auto Reply
+- Configurable auto-reply per device
+- Custom reply messages
+
+### ✅ Bot Commands
+- `!info` - Show device information
+- `!test` - Test bot response
+- `!ping` - Ping bot
+
+### ✅ Robust Architecture
+- Modular code structure
+- Separation of concerns
+- Easy to maintain and extend
+- Comprehensive error handling
+
+## 📊 Webhook Payload
+
+### Incoming Message
+```json
+{
+  "device_id": "device-uuid",
+  "device_name": "My Device",
+  "type": "incoming_chat",
+  "data": {
+    "chat_id": "6281234567890",
+    "message_id": "message_id",
+    "name": "John Doe",
+    "profile_picture": "https://...",
+    "timestamp": 1234567890,
+    "message_body": "Hello!",
+    "message_ack": "PENDING",
+    "has_media": false,
+    "media_mime": "",
+    "media_name": "",
+    "location_attached": {
+      "lat": null,
+      "lng": null
+    },
+    "is_forwarding": false,
+    "is_from_me": false
+  }
+}
+```
+
+### Outgoing Message
+```json
+{
+  "device_id": "device-uuid",
+  "device_name": "My Device",
+  "type": "outgoing_chat",
+  "data": {
+    "chat_id": "6281234567890",
+    "message_id": "message_id",
+    "name": "Contact Name",
+    "timestamp": 1234567890,
+    "message_body": "Reply message",
+    "message_ack": "SENT",
+    "is_from_me": true
+  }
+}
+```
+
+## 🔒 Security
+
+- API key authentication on all endpoints
+- Input validation middleware
+- Rate limiting recommended for production
+- Environment variables for sensitive data
+
+## 🛠️ Development
+
+### Code Structure
+
+- **config/** - Configuration and constants
+- **core/** - Core business logic (WhatsApp client)
+- **middleware/** - Express middleware
+- **routes/** - API route handlers
+- **services/** - Business logic layer
+- **utils/** - Helper utilities
+
+### Adding New Features
+
+1. Add configuration in `src/config/`
+2. Add business logic in `src/services/`
+3. Add routes in `src/routes/`
+4. Add utilities in `src/utils/` if needed
+
+### Logging
+
+Use the Logger utility for consistent logging:
+
+```javascript
+const Logger = require('./utils/logger.utils');
+
+Logger.log(deviceId, 'Message', data);
+Logger.error(deviceId, 'Error message', error);
+Logger.success(deviceId, 'Success message');
+Logger.warn(deviceId, 'Warning message');
+Logger.info(deviceId, 'Info message');
+```
+
+## 🐛 Troubleshooting
+
+### QR Code Not Showing
+- Check if device already authenticated
+- Try logout and re-initialize
+
+### Client Not Ready
+- Wait for "WhatsApp Bot is ready!" message
+- Check session directory permissions
+
+### Webhook Not Working
+- Verify webhook URL is accessible
+- Check webhook endpoint logs
+- Test with `/api/device/test-webhook`
+
+## 📄 License
+
+ISC
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📞 Support
+
+For issues and questions, please open an issue on GitHub.

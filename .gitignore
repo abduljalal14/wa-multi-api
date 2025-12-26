@@ -1,5 +1,35 @@
-/.wwebjs_cache
-/configs
-/node_modules
-/package-lock.json
-/sessions
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Generated directories
+configs/
+sessions/
+.wwebjs_cache
+package-lock.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+coverage/
+
+# Build
+dist/
+build/
