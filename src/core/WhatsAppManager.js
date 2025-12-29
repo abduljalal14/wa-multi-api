@@ -6,8 +6,11 @@ const Logger = require('../utils/logger.utils');
 const FileUtils = require('../utils/file.utils');
 const MessageService = require('../services/message.service');
 const WebhookService = require('../services/webhook.service');
-const { PUPPETEER_ARGS, BOT_COMMANDS, RECONNECT_DELAY, REINIT_DELAY } = require('../config/constants');
+const { PUPPETEER_ARGS, BOT_COMMANDS, RECONNECT_DELAY, REINIT_DELAY, MIN_DELAY, MAX_DELAY } = require('../config/constants');
 const { CONFIG_DIR, SESSIONS_DIR } = require('../config/environment');
+
+// Helper function untuk jeda acak
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 class WhatsAppManager {
   constructor(deviceId, config = {}) {
@@ -22,8 +25,8 @@ class WhatsAppManager {
     this.isClientReady = false;
     this.client = null;
     this.configFile = path.join(CONFIG_DIR, `${deviceId}.json`);
-    this.isDeleted = false; // Flag untuk menandai device sudah dihapus
-    this.reconnectTimeout = null; // Store timeout reference
+    this.isDeleted = false;
+    this.reconnectTimeout = null;
 
     this.loadConfig();
     this.initializeClient();
@@ -101,11 +104,7 @@ class WhatsAppManager {
   }
 
   initializeClient() {
-    // Jangan initialize jika device sudah dihapus
-    if (this.isDeleted) {
-      Logger.warn(this.deviceId, 'Device is deleted, skipping initialization');
-      return;
-    }
+    if (this.isDeleted) return;
 
     this.client = new Client({
       authStrategy: new LocalAuth({
@@ -113,7 +112,7 @@ class WhatsAppManager {
         dataPath: SESSIONS_DIR,
       }),
       puppeteer: {
-        headless: true,
+        headless: false, // Set ke false jika ingin memantau secara visual
         args: PUPPETEER_ARGS,
       },
     });
@@ -206,21 +205,41 @@ class WhatsAppManager {
   async handleIncomingMessage(msg) {
     if (msg.isStatus) return;
 
-    Logger.info(this.deviceId, `Message received: ${msg.from} => ${msg.body}`);
+    Logger.info(this.deviceId, `Message from: ${msg.from}`);
 
+    // Logika Webhook (Tetap dipertahankan)
     if (this.config.webhook_url) {
       try {
         const { contactName, profilePicture } = await MessageService.extractContactInfo(msg, this.deviceId);
         const webhookData = WebhookService.buildIncomingMessagePayload(msg, contactName, profilePicture);
         await this.sendToWebhook(webhookData);
       } catch (error) {
-        Logger.error(this.deviceId, 'Error processing webhook:', error.message);
+        Logger.error(this.deviceId, 'Webhook Error:', error.message);
       }
     }
 
+    // Perbaikan Auto Reply: Meniru Manusia
     if (this.config.auto_reply && msg.body.toLowerCase().includes('ping')) {
       try {
-        await msg.reply(`🤖 [${this.config.device_name}] Pong! Auto reply from device ${this.deviceId}`);
+        const chat = await msg.getChat();
+        
+        // 1. Jeda "berpikir" acak
+        const thinkTime = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + MIN_DELAY;
+        await sleep(thinkTime);
+
+        // 2. Tandai pesan sebagai terbaca (opsional tapi lebih natural)
+        await chat.sendSeen();
+
+        // 3. Tampilkan status "Sedang Mengetik"
+        await chat.sendStateTyping();
+
+        // 4. Jeda waktu mengetik (misal 2 detik)
+        await sleep(2000);
+
+        await msg.reply(`🤖 Pong! Balasan otomatis dari ${this.config.device_name}`);
+        
+        // 5. Berhenti mengetik
+        await chat.clearState();
       } catch (error) {
         Logger.error(this.deviceId, 'Error auto reply:', error.message);
       }
@@ -260,30 +279,23 @@ class WhatsAppManager {
       const command = msg.body.toLowerCase();
       const chat = await msg.getChat();
 
-      switch (command) {
-        case BOT_COMMANDS.INFO:
-          await chat.sendMessage(`🤖 Device Info:
-📱 Device ID: ${this.deviceId}
-📋 Device Name: ${this.config.device_name}
-📞 Number: ${this.client.info.wid.user}
-🔋 Battery: ${this.client.info.battery}%
-📡 Status: Connected
-🔗 Webhook: ${this.config.webhook_url ? "Active" : "Not Set"}`);
-          break;
-
-        case BOT_COMMANDS.TEST:
-          await msg.reply(`🤖 [${this.config.device_name}] Test successful!`);
-          break;
-
-        case BOT_COMMANDS.PING:
-          await this.sendMessage(msg.from, `🏓 [${this.config.device_name}] Pong!`);
-          break;
-
-        default:
-          break;
+      // Gunakan pola yang sama untuk perintah bot agar tidak instan
+      if (Object.values(BOT_COMMANDS).includes(command)) {
+        await chat.sendStateTyping();
+        await sleep(1500);
+        
+        switch (command) {
+          case BOT_COMMANDS.INFO:
+            await chat.sendMessage(`🤖 Device: ${this.config.device_name}\nStatus: Connected`);
+            break;
+          case BOT_COMMANDS.PING:
+            await chat.sendMessage('🏓 Pong!');
+            break;
+        }
+        await chat.clearState();
       }
     } catch (error) {
-      Logger.error(this.deviceId, 'Error handling commands:', error.message);
+      Logger.error(this.deviceId, 'Command Error:', error.message);
     }
   }
 

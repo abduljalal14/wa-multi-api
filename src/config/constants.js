@@ -1,42 +1,15 @@
+// constants.js
 module.exports = {
   PUPPETEER_ARGS: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-accelerated-2d-canvas",
-    "--no-first-run",
-    "--no-zygote",
-    "--single-process",
-    "--disable-gpu",
-    "--disable-web-security",
-    "--disable-features=VizDisplayCompositor",
-    "--disable-extensions",
-    "--disable-default-apps",
-    "--disable-sync",
-    "--disable-background-networking",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-breakpad",
-    "--disable-client-side-phishing-detection",
-    "--disable-component-update",
-    "--disable-domain-reliability",
-    "--disable-features=AudioServiceOutOfProcess",
-    "--disable-ipc-flooding-protection",
-    "--disable-notifications",
-    "--disable-permissions-api",
-    "--disable-site-isolation-trials",
-    "--disable-software-rasterizer",
-    "--disable-speech-api",
-    "--disable-webgl",
-    "--enable-features=NetworkService,NetworkServiceInProcess",
-    "--metrics-recording-only",
-    "--mute-audio",
-    "--no-default-browser-check",
-    "--no-pings",
-    "--password-store=basic",
-    "--use-gl=swiftshader",
-    "--use-fake-ui-for-media-stream",
-    "--disable-blink-features=AutomationControlled",
+    "--disable-blink-features=AutomationControlled", // Menghilangkan flag "navigator.webdriver"
+    "--disable-infobars",
+    "--window-position=0,0",
+    "--ignore-certifcate-errors",
+    "--ignore-certifcate-errors-spki-list",
+    // User Agent Chrome versi terbaru di Windows 10
+    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   ],
 
   MIME_TYPE_MAP: {
@@ -45,14 +18,9 @@ module.exports = {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
     'application/vnd.ms-excel': 'xls',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-    'application/vnd.ms-powerpoint': 'ppt',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
     'application/zip': 'zip',
-    'application/x-rar-compressed': 'rar',
     'text/plain': 'txt',
-    'text/csv': 'csv',
     'application/json': 'json',
-    'application/xml': 'xml',
   },
 
   BOT_COMMANDS: {
@@ -61,7 +29,9 @@ module.exports = {
     PING: '!ping',
   },
 
-  MESSAGE_DELAY: 500,
-  RECONNECT_DELAY: 5000,
-  REINIT_DELAY: 1000,
+  // Jeda antar pesan yang lebih aman (dalam milidetik)
+  MIN_DELAY: 3000, // Minimal 3 detik
+  MAX_DELAY: 7000, // Maksimal 7 detik
+  RECONNECT_DELAY: 10000, 
+  REINIT_DELAY: 5000,
 };
