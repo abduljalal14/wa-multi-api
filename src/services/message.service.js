@@ -11,16 +11,17 @@ class MessageService {
   static async sendTextMessage(client, deviceId, chatId, message) {
     try {
       const formattedChatId = this.formatChatId(chatId);
+      // 1. Jeda sebelum mengirim pesan
+      const extraDelay = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + MIN_DELAY;
+      await new Promise(resolve => setTimeout(resolve, extraDelay));
       
-      await new Promise(resolve => setTimeout(resolve, MESSAGE_DELAY));
-      
+      // 2. Kirim pesan menggunakan client resmi
       const result = await client.sendMessage(formattedChatId, message);
       
       Logger.success(deviceId, `Message sent to: ${formattedChatId}`);
-      
       return result;
     } catch (error) {
-      Logger.error(deviceId, 'Failed to send message:', error.message);
+      Logger.error(deviceId, `Failed to send message to ${chatId}:`, error.message);
       throw error;
     }
   }

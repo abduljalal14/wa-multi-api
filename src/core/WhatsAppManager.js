@@ -84,7 +84,30 @@ class WhatsAppManager {
 
   async sendMessage(chatId, message) {
     this.ensureClientReady();
-    return MessageService.sendTextMessage(this.client, this.deviceId, chatId, message);
+
+    try {
+      const chat = await this.client.getChatById(chatId);
+
+      // 1. Simulasi 'sedang mengetik' agar terlihat manusiawi
+      await chat.sendStateTyping();
+
+      // 2. Berikan jeda acak antara 2 hingga 5 detik (meniru waktu mengetik)
+      // Ini mencegah sistem mendeteksi pengiriman pesan secepat kilat
+      const typingDelay = Math.floor(Math.random() * 3000) + 2000;
+      await new Promise(resolve => setTimeout(resolve, typingDelay));
+
+      // 3. Kirim pesan
+      const response = await MessageService.sendTextMessage(this.client, this.deviceId, chatId, message);
+
+      // 4. Hentikan status mengetik
+      await chat.clearState();
+
+      return response;
+    } catch (error) {
+      Logger.error(this.deviceId, 'Error in sendMessage (safe mode):', error.message);
+      // Fallback jika gagal mendapatkan chat object, langsung kirim lewat service
+      return MessageService.sendTextMessage(this.client, this.deviceId, chatId, message);
+    }
   }
 
   async sendImage(chatId, image, caption = '') {
