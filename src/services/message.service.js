@@ -11,8 +11,9 @@ class MessageService {
   static async sendTextMessage(client, deviceId, chatId, message) {
     try {
       const formattedChatId = this.formatChatId(chatId);
-      // 1. Jeda sebelum mengirim pesan
-      const extraDelay = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + MIN_DELAY;
+      // Jika pesan pendek, jeda lebih singkat. Jika panjang, jeda lebih lama.
+      const baseDelay = message.length < 20 ? MIN_DELAY : MIN_DELAY + 2000;
+      const extraDelay = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + baseDelay;
       await new Promise(resolve => setTimeout(resolve, extraDelay));
       
       // 2. Kirim pesan menggunakan client resmi
