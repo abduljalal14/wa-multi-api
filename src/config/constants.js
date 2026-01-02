@@ -5,6 +5,8 @@ module.exports = {
     "--disable-setuid-sandbox",
     "--disable-blink-features=AutomationControlled", // Menghilangkan flag "navigator.webdriver"
     "--disable-infobars",
+    "--excludeSwitches", "enable-automation",
+    "--useAutomationExtension=false",
     "--window-position=0,0",
     "--ignore-certifcate-errors",
     "--ignore-certifcate-errors-spki-list",

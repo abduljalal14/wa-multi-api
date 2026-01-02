@@ -11,12 +11,18 @@ class MessageService {
   static async sendTextMessage(client, deviceId, chatId, message) {
     try {
       const formattedChatId = this.formatChatId(chatId);
-      // Jika pesan pendek, jeda lebih singkat. Jika panjang, jeda lebih lama.
-      const baseDelay = message.length < 20 ? MIN_DELAY : MIN_DELAY + 2000;
-      const extraDelay = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + baseDelay;
-      await new Promise(resolve => setTimeout(resolve, extraDelay));
       
-      // 2. Kirim pesan menggunakan client resmi
+      // Hitung delay berdasarkan panjang pesan (typing speed simulation)
+      // Misal: tiap karakter butuh 50ms, ditambah jeda acak dasar
+      const typingSpeed = message.length * 50; 
+      const randomBase = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + MIN_DELAY;
+      
+      // Total delay tidak boleh terlalu ekstrem, kita batasi maksimal 12 detik
+      const totalDelay = Math.min(typingSpeed + randomBase, 12000);
+
+      Logger.info(deviceId, `Simulating human delay: ${totalDelay}ms`);
+      await new Promise(resolve => setTimeout(resolve, totalDelay));
+      
       const result = await client.sendMessage(formattedChatId, message);
       
       Logger.success(deviceId, `Message sent to: ${formattedChatId}`);
