@@ -1,36 +1,98 @@
 const { MessageMedia } = require('whatsapp-web.js');
 const DownloadUtils = require('../utils/download.utils');
 const Logger = require('../utils/logger.utils');
-const { MESSAGE_DELAY } = require('../config/constants');
+const { MESSAGE_DELAY, MAX_DELAY, MIN_DELAY } = require('../config/constants');
 
 class MessageService {
   static formatChatId(chatId) {
-    return chatId.includes("@c.us") ? chatId : `${chatId}@c.us`;
+    // Check if chatId already has a valid format suffix
+    if (chatId.includes("@c.us") || chatId.includes("@g.us") || chatId.includes("@lid") || chatId.includes("@")) {
+      return chatId; // Already has correct format
+    }
+    // Add @c.us for single chat if no format exists
+    return `${chatId}@c.us`;
   }
 
-  static async sendTextMessage(client, deviceId, chatId, message) {
-    try {
-      const formattedChatId = this.formatChatId(chatId);
-      
-      // Hitung delay berdasarkan panjang pesan (typing speed simulation)
-      // Misal: tiap karakter butuh 50ms, ditambah jeda acak dasar
-      const typingSpeed = message.length * 50; 
-      const randomBase = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + MIN_DELAY;
-      
-      // Total delay tidak boleh terlalu ekstrem, kita batasi maksimal 12 detik
-      const totalDelay = Math.min(typingSpeed + randomBase, 12000);
+  static async sendTextMessage(client, deviceId, chatId, message, maxRetries = 2) {
+    const MAX_RETRIES = maxRetries;
+    let lastError;
 
-      Logger.info(deviceId, `Simulating human delay: ${totalDelay}ms`);
-      await new Promise(resolve => setTimeout(resolve, totalDelay));
-      
-      const result = await client.sendMessage(formattedChatId, message);
-      
-      Logger.success(deviceId, `Message sent to: ${formattedChatId}`);
-      return result;
-    } catch (error) {
-      Logger.error(deviceId, `Failed to send message to ${chatId}:`, error.message);
-      throw error;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const formattedChatId = this.formatChatId(chatId);
+        
+        // Sanitasi pesan untuk menghindari karakter yang bermasalah
+        const sanitizedMessage = this.sanitizeMessage(message);
+        
+        Logger.info(deviceId, `Sending message attempt ${attempt + 1}/${MAX_RETRIES} to: ${formattedChatId}`);
+        
+        let result;
+        
+        // Coba dengan chat object untuk typing state, jika gagal langsung send
+        try {
+          const chat = await client.getChatById(formattedChatId);
+          
+          // Tampilkan status "Sedang Mengetik"
+          try {
+            await chat.sendStateTyping();
+          } catch (typeErr) {
+            Logger.warn(deviceId, 'Could not send typing state:', typeErr.message);
+          }
+
+          // Hitung delay manusiawi berdasarkan panjang pesan
+          const typingSpeed = sanitizedMessage.length * 50; 
+          const randomBase = Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY)) + MIN_DELAY;
+          const totalDelay = Math.min(typingSpeed + randomBase, 10000);
+
+          Logger.info(deviceId, `Typing simulation: ${totalDelay}ms`);
+          await new Promise(resolve => setTimeout(resolve, totalDelay));
+          
+          // Kirim pesan
+          result = await client.sendMessage(formattedChatId, sanitizedMessage);
+          
+          // Hentikan status mengetik
+          try {
+            await chat.clearState();
+          } catch (clearErr) {
+            // Ignore
+          }
+          
+          Logger.success(deviceId, `Message sent to: ${formattedChatId}`);
+        } catch (chatError) {
+          // Fallback: kirim langsung tanpa chat object
+          Logger.warn(deviceId, 'Chat object failed, sending directly:', chatError.message);
+          result = await client.sendMessage(formattedChatId, sanitizedMessage);
+          Logger.success(deviceId, `Message sent (direct) to: ${formattedChatId}`);
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error;
+        Logger.warn(deviceId, `Attempt ${attempt + 1} failed:`, error.message);
+        
+        // Jika bukan attempt terakhir, tunggu sebelum retry
+        if (attempt < MAX_RETRIES - 1) {
+          const backoffDelay = Math.pow(2, attempt) * 1000;
+          Logger.info(deviceId, `Retrying in ${backoffDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        }
+      }
     }
+    
+    // Semua attempt gagal
+    Logger.error(deviceId, `Failed to send message after ${MAX_RETRIES} attempts:`, lastError.message);
+    throw lastError;
+  }
+
+  static sanitizeMessage(message) {
+    if (!message || typeof message !== 'string') {
+      return '';
+    }
+    
+    // Remove potentially problematic characters but keep emojis and special formatting
+    return message
+      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+      .trim();
   }
 
   static async sendImageMessage(client, deviceId, chatId, image, caption = '') {

@@ -1,18 +1,17 @@
 // constants.js
 module.exports = {
   PUPPETEER_ARGS: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-blink-features=AutomationControlled", // Menghilangkan flag "navigator.webdriver"
-    "--disable-infobars",
-    "--excludeSwitches", "enable-automation",
-    "--useAutomationExtension=false",
-    "--window-position=0,0",
-    "--ignore-certifcate-errors",
-    "--ignore-certifcate-errors-spki-list",
-    // User Agent Chrome versi terbaru di Windows 10
-    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  ],
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled", // Mematikan flag navigator.webdriver
+      "--disable-infobars", // Menghilangkan baris "controlled by automated..."
+      "--excludeSwitches", "enable-automation", // Tambahan untuk menyembunyikan status otomatisasi
+      "--useAutomationExtension=false",
+      "--window-position=0,0",
+      "--ignore-certificate-errors",
+      "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    ],
+  ignoreDefaultArgs: ['--enable-automation'],
 
   MIME_TYPE_MAP: {
     'application/pdf': 'pdf',

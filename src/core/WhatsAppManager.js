@@ -27,6 +27,9 @@ class WhatsAppManager {
     this.configFile = path.join(CONFIG_DIR, `${deviceId}.json`);
     this.isDeleted = false;
     this.reconnectTimeout = null;
+    
+    // Track recent webhook replies to prevent circular webhook processing
+    this.recentWebhookReplies = new Set();
 
     this.loadConfig();
     this.initializeClient();
@@ -71,43 +74,93 @@ class WhatsAppManager {
     if (!this.config.webhook_url) return;
 
     try {
-      await WebhookService.sendWebhook(
+      const response = await WebhookService.sendWebhook(
         this.deviceId,
         this.config.device_name,
         this.config.webhook_url,
         webhookData
       );
+
+      // Handle webhook response jika ada reply_message
+      if (response && response.reply_message) {
+        try {
+          const chatId = webhookData.data.chat_id;
+          
+          // Mark ini sebagai webhook reply untuk mencegah circular processing
+          const replyKey = `${chatId}:${Date.now()}`;
+          this.recentWebhookReplies.add(replyKey);
+          
+          // Send dengan flag isFromWebhook = true (no retry)
+          await this.sendMessage(chatId, response.reply_message, true);
+          Logger.success(this.deviceId, 'Reply message sent from webhook');
+          
+          // Hapus dari tracking set setelah 5 detik
+          setTimeout(() => {
+            this.recentWebhookReplies.delete(replyKey);
+          }, 5000);
+        } catch (sendError) {
+          Logger.error(this.deviceId, 'Failed to send webhook reply:', sendError.message);
+        }
+      }
     } catch (error) {
       Logger.error(this.deviceId, 'Error sending webhook:', error.message);
     }
   }
 
-  async sendMessage(chatId, message) {
+  async sendMessage(chatId, message, isFromWebhook = false) {
     this.ensureClientReady();
 
     try {
-      const chat = await this.client.getChatById(chatId);
+      // Format chatId dulu
+      const formattedChatId = this.formatChatId(chatId);
+      
+      // Coba tampilkan typing state (best effort, tidak harus berhasil)
+      try {
+        const chat = await this.client.getChatById(formattedChatId);
+        await chat.sendStateTyping();
+      } catch (typeErr) {
+        // Ignore - typing state opsional, pesan tetap harus dikirim
+        Logger.warn(this.deviceId, 'Typing state failed (will continue):', typeErr.message);
+      }
 
-      // 1. Simulasi 'sedang mengetik' agar terlihat manusiawi
-      await chat.sendStateTyping();
-
-      // 2. Berikan jeda acak antara 2 hingga 5 detik (meniru waktu mengetik)
-      // Ini mencegah sistem mendeteksi pengiriman pesan secepat kilat
+      // Berikan jeda acak antara 2 hingga 5 detik
       const typingDelay = Math.floor(Math.random() * 3000) + 2000;
       await new Promise(resolve => setTimeout(resolve, typingDelay));
 
-      // 3. Kirim pesan
-      const response = await MessageService.sendTextMessage(this.client, this.deviceId, chatId, message);
+      // Kirim pesan via MessageService
+      // Jika dari webhook: no retry (MAX_RETRIES = 1)
+      // Jika manual: with retry (MAX_RETRIES = 2)
+      const response = await MessageService.sendTextMessage(
+        this.client,
+        this.deviceId,
+        formattedChatId,
+        message,
+        isFromWebhook ? 1 : 2
+      );
 
-      // 4. Hentikan status mengetik
-      await chat.clearState();
+      // Coba hentikan status mengetik (best effort)
+      try {
+        const chat = await this.client.getChatById(formattedChatId);
+        await chat.clearState();
+      } catch (clearErr) {
+        // Ignore
+        Logger.warn(this.deviceId, 'Clear state failed (ignored):', clearErr.message);
+      }
 
       return response;
     } catch (error) {
-      Logger.error(this.deviceId, 'Error in sendMessage (safe mode):', error.message);
-      // Fallback jika gagal mendapatkan chat object, langsung kirim lewat service
-      return MessageService.sendTextMessage(this.client, this.deviceId, chatId, message);
+      Logger.error(this.deviceId, 'Error in sendMessage:', error.message);
+      throw error;
     }
+  }
+
+  formatChatId(chatId) {
+    // Check if chatId already has a valid format suffix
+    if (chatId.includes("@c.us") || chatId.includes("@g.us") || chatId.includes("@lid") || chatId.includes("@")) {
+      return chatId; // Already has correct format
+    }
+    // Add @c.us for single chat if no format exists
+    return `${chatId}@c.us`;
   }
 
   async sendImage(chatId, image, caption = '') {
@@ -274,6 +327,18 @@ class WhatsAppManager {
   async handleOutgoingMessage(msg) {
     if (msg.fromMe && this.config.webhook_url) {
       try {
+        // Skip webhook outgoing jika ini adalah reply dari webhook incoming (within 5 seconds)
+        // Check jika ada recent webhook reply untuk chatId ini
+        const chatId = msg.to;
+        const isRecentWebhookReply = Array.from(this.recentWebhookReplies).some(key => 
+          key.startsWith(chatId + ':')
+        );
+        
+        if (isRecentWebhookReply) {
+          Logger.info(this.deviceId, `Skipping webhook for recent webhook reply to: ${chatId}`);
+          return; // Skip webhook processing untuk avoid circular loop
+        }
+
         let contactName = "Unknown";
         
         if (msg._data && msg._data.to) {

@@ -34,7 +34,8 @@ class WebhookService {
   }
 
   static buildIncomingMessagePayload(msg, contactName, profilePicture) {
-    const chatId = msg.from.replace("@c.us", "");
+    // Keep original chat ID format (@c.us, @g.us, @lid, etc)
+    const chatId = msg.from;
     const hasMedia = msg.hasMedia;
     
     let mediaMime = "";
@@ -73,7 +74,8 @@ class WebhookService {
   }
 
   static buildOutgoingMessagePayload(msg, contactName) {
-    const chatId = msg.to.replace("@c.us", "");
+    // Keep original chat ID format (@c.us, @g.us, @lid, etc)
+    const chatId = msg.to;
 
     return {
       type: "outgoing_chat",
